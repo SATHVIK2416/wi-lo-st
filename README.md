@@ -1,16 +1,19 @@
-# 🎥 Video Stream WebApp
+# 🎥 Video Stream WebApp with Live Audio
 
-A web application that allows you to upload video files from your file explorer and stream them over your local network (WiFi). Perfect for sharing videos with others on the same network!
+A comprehensive web application that allows you to upload video files from your file explorer and stream them over your local network (WiFi), plus **live audio streaming** from your laptop to all connected devices in real-time!
 
-## ✨ Features
+## ✨ Enhanced Features
 
 - 📁 **File Upload**: Drag and drop or click to select video files from your computer
-- 🎬 **Video Streaming**: Stream videos with adaptive quality and seek support
-- 🌐 **Network Sharing**: Share videos with anyone on your local WiFi network
+- 🎬 **Video Streaming**: Stream videos with adaptive quality and seek support  
+- 🎤 **Live Audio Streaming**: Stream your laptop's audio live to all connected devices
+- 🌐 **Network Sharing**: Share videos and audio with anyone on your local WiFi network
 - 📱 **Responsive Design**: Works on desktop, tablet, and mobile devices
-- 🎯 **Multiple Formats**: Supports MP4, AVI, MOV, MKV, WebM, M4V
+- 🎯 **Extended Format Support**: MP4, AVI, MOV, **MKV**, WebM, M4V, FLV, WMV
 - 📊 **File Management**: View, play, and delete uploaded videos
 - 🔗 **Easy Sharing**: Copy direct video URLs to share with others
+- 👥 **Real-time Connection Status**: See how many devices are connected
+- 🎚️ **Audio Level Visualization**: See live audio levels while streaming
 
 ## 🚀 Quick Start
 
@@ -18,6 +21,8 @@ A web application that allows you to upload video files from your file explorer 
 
 - Node.js (version 14 or higher)
 - NPM (comes with Node.js)
+- Modern web browser with WebRTC support
+- Microphone access (for live audio streaming)
 
 ### Installation
 
@@ -49,19 +54,27 @@ Run `npm start` and note the network URLs displayed in the console. These URLs c
 - **Method 1**: Click the upload area and select a video file
 - **Method 2**: Drag and drop a video file onto the upload area
 
-Supported formats: MP4, AVI, MOV, MKV, WebM, M4V
+Supported formats: MP4, AVI, MOV, **MKV**, WebM, M4V, FLV, WMV
 
-### 3. Playing Videos
+### 3. Live Audio Streaming
+- Click "🎙️ Start Live Audio" to begin streaming your laptop's audio
+- Allow microphone access when prompted
+- Your audio will be streamed live to all connected devices
+- Watch the audio level visualization to see streaming activity
+- Click "⏹️ Stop Live Audio" to end the stream
+
+### 4. Playing Videos
 - Once uploaded, the video will appear in the "Current Video" section
 - Use the built-in video player to watch locally
 - Videos are also listed in the "Available Videos" section
 
-### 4. Sharing with Others
+### 5. Sharing with Others
 - Copy the URL from the "Share Video" section
 - Send this URL to others on your WiFi network
-- They can access the video directly in their browser
+- They can access videos AND hear live audio directly in their browser
+- Real-time connection counter shows how many devices are connected
 
-### 5. Managing Videos
+### 6. Managing Videos
 - View all uploaded videos in the "Available Videos" section
 - Click "Play" to switch to a different video
 - Click "Delete" to remove videos you no longer need
@@ -75,9 +88,11 @@ When you start the server, it will display URLs like:
 🌐 Network access:
    http://192.168.1.100:3000
    http://10.0.0.50:3000
+
+📂 Upload videos and stream live audio to connected devices!
 ```
 
-Share the network URLs with others on your WiFi network so they can access the videos.
+Share the network URLs with others on your WiFi network so they can access videos and hear live audio streams.
 
 ## 📁 File Structure
 
@@ -98,6 +113,8 @@ wi-lo-st/
 ### Backend (Node.js/Express)
 - **File Upload**: Multer middleware for handling file uploads
 - **Video Streaming**: HTTP range requests for efficient streaming
+- **Live Audio Streaming**: Socket.IO for real-time audio transmission
+- **WebRTC Integration**: Modern audio streaming with low latency
 - **CORS**: Cross-origin resource sharing enabled
 - **File Management**: REST API for video operations
 
@@ -106,11 +123,16 @@ wi-lo-st/
 - **Drag & Drop**: Modern file upload experience
 - **Progress Tracking**: Real-time upload progress
 - **Video Player**: HTML5 video with full controls
+- **Live Audio Interface**: Real-time audio streaming controls
+- **WebSocket Communication**: Socket.IO for live features
+- **Audio Visualization**: Real-time audio level indicators
 
 ### Streaming Technology
 - **Range Requests**: Supports seeking and progressive download
-- **Multiple Formats**: Automatic format detection
+- **Multiple Formats**: Extended format support including MKV
+- **Real-time Audio**: WebRTC-based audio streaming
 - **Adaptive Quality**: Browser handles quality based on network
+- **Low Latency**: Optimized for real-time communication
 
 ## 🔧 Configuration
 
@@ -124,13 +146,21 @@ PORT=8080 npm start
 The default file upload limit is handled by Express. To change it, modify the server.js file.
 
 ### Supported Video Formats
-The app supports common video formats:
+The app supports common video formats including:
 - MP4 (recommended)
 - AVI
 - MOV
-- MKV
+- **MKV** (newly added)
 - WebM
 - M4V
+- FLV
+- WMV
+
+### Live Audio Features
+- **Real-time Streaming**: Audio streams with minimal delay
+- **Audio Level Visualization**: See live audio activity
+- **Multi-device Support**: Stream to unlimited connected devices
+- **Echo Cancellation**: Built-in audio processing for better quality
 
 ## 🚨 Security Notes
 
@@ -142,9 +172,15 @@ The app supports common video formats:
 ## 🐛 Troubleshooting
 
 ### Video Won't Play
-- Ensure the video format is supported
+- Ensure the video format is supported (including MKV)
 - Check if the file was uploaded successfully
 - Try refreshing the page
+
+### Live Audio Not Working
+- Ensure microphone access is granted
+- Check if browser supports WebRTC
+- Verify other devices are connected to the same network
+- Try refreshing all connected devices
 
 ### Can't Access from Other Devices
 - Make sure all devices are on the same WiFi network
@@ -165,11 +201,13 @@ If you encounter issues:
 
 ## 🎯 Use Cases
 
-- **Home Entertainment**: Share movies with family members
-- **Presentations**: Stream videos during meetings
-- **Education**: Share educational content in classrooms
-- **Events**: Display videos at parties or gatherings
-- **Development**: Test video streaming functionality
+- **Home Entertainment**: Share movies with family members + live commentary
+- **Presentations**: Stream videos during meetings with live audio narration
+- **Education**: Share educational content in classrooms with teacher audio
+- **Events**: Display videos at parties with live DJ commentary
+- **Gaming**: Stream gameplay with live voice commentary
+- **Music Sessions**: Share music videos with live audio mixing
+- **Development**: Test video and audio streaming functionality
 
 ## 🔄 Updates
 

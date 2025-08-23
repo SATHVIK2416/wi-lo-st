@@ -32,6 +32,22 @@ header h1 {
 header p {
     font-size: 1.1rem;
     opacity: 0.9;
+    margin-bottom: 15px;
+}
+
+.connection-status {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    font-size: 0.9rem;
+    opacity: 0.8;
+}
+
+.connection-status span {
+    background: rgba(255, 255, 255, 0.2);
+    padding: 5px 12px;
+    border-radius: 15px;
+    backdrop-filter: blur(10px);
 }
 
 .network-info {
@@ -59,7 +75,7 @@ header p {
     color: #2d3748;
 }
 
-.upload-section, .video-section, .video-list-section, .share-section {
+.upload-section, .video-section, .video-list-section, .share-section, .live-audio-section {
     background: white;
     padding: 25px;
     border-radius: 10px;
@@ -67,7 +83,7 @@ header p {
     box-shadow: 0 4px 6px rgba(0,0,0,0.1);
 }
 
-.upload-section h2, .video-section h2, .video-list-section h2, .share-section h2 {
+.upload-section h2, .video-section h2, .video-list-section h2, .share-section h2, .live-audio-section h2 {
     margin-bottom: 20px;
     color: #4a5568;
 }
@@ -85,6 +101,51 @@ header p {
 .upload-area:hover {
     border-color: #667eea;
     background: #edf2f7;
+}
+
+/* Live Audio Section Styles */
+.audio-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.audio-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #f8f9fa;
+    padding: 8px 15px;
+    border-radius: 20px;
+    border: 2px solid #e2e8f0;
+}
+
+.audio-level {
+    width: 100px;
+    height: 8px;
+    background: #e2e8f0;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.audio-level-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #48bb78, #38a169, #d69e2e, #e53e3e);
+    border-radius: 4px;
+    transition: width 0.1s ease;
+}
+
+.audio-description {
+    color: #718096;
+    font-size: 0.9rem;
+    margin: 0;
+    padding: 10px;
+    background: #f7fafc;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
 }
 
 .upload-area.dragover {

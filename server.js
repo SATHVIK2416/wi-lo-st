@@ -3,8 +3,17 @@ const path = require('path');
 const fs = require('fs');
 const cors = require('cors');
 const multer = require('multer');
+const http = require('http');
+const { Server } = require('socket.io');
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
 const PORT = process.env.PORT || 3000;
 
 // Middleware
@@ -12,8 +21,48 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
 
-// Store uploaded video information
+// Store uploaded video information and connected clients
 let currentVideo = null;
+let connectedClients = new Set();
+let isLiveStreamActive = false;
+
+// Socket.io connection handling
+io.on('connection', (socket) => {
+  console.log('Client connected:', socket.id);
+  connectedClients.add(socket.id);
+  
+  // Send current live stream status
+  socket.emit('liveStreamStatus', { active: isLiveStreamActive });
+  
+  // Handle live audio stream
+  socket.on('audioStream', (audioData) => {
+    // Broadcast audio to all other connected clients
+    socket.broadcast.emit('audioStream', audioData);
+  });
+  
+  // Handle live stream start/stop
+  socket.on('startLiveStream', () => {
+    isLiveStreamActive = true;
+    socket.broadcast.emit('liveStreamStarted');
+    console.log('Live stream started by:', socket.id);
+  });
+  
+  socket.on('stopLiveStream', () => {
+    isLiveStreamActive = false;
+    socket.broadcast.emit('liveStreamStopped');
+    console.log('Live stream stopped by:', socket.id);
+  });
+  
+  // Handle video synchronization
+  socket.on('videoSync', (data) => {
+    socket.broadcast.emit('videoSync', data);
+  });
+  
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
+    connectedClients.delete(socket.id);
+  });
+});
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -33,12 +82,28 @@ const storage = multer.diskStorage({
 const upload = multer({ 
   storage: storage,
   fileFilter: function (req, file, cb) {
-    // Accept video files only
-    if (file.mimetype.startsWith('video/')) {
+    // Accept video files only - including MKV
+    const allowedMimeTypes = [
+      'video/mp4',
+      'video/avi',
+      'video/quicktime', // .mov
+      'video/x-msvideo', // .avi
+      'video/webm',
+      'video/x-matroska', // .mkv
+      'video/mp4', // .m4v
+    ];
+    
+    const allowedExtensions = ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.m4v'];
+    const fileExtension = path.extname(file.originalname).toLowerCase();
+    
+    if (file.mimetype.startsWith('video/') || allowedMimeTypes.includes(file.mimetype) || allowedExtensions.includes(fileExtension)) {
       cb(null, true);
     } else {
-      cb(new Error('Only video files are allowed!'), false);
+      cb(new Error('Only video files are allowed! Supported formats: MP4, AVI, MOV, MKV, WebM, M4V'), false);
     }
+  },
+  limits: {
+    fileSize: 5 * 1024 * 1024 * 1024 // 5GB limit
   }
 });
 
@@ -117,7 +182,7 @@ app.get('/stream/:filename', (req, res) => {
       'Content-Range': `bytes ${start}-${end}/${fileSize}`,
       'Accept-Ranges': 'bytes',
       'Content-Length': chunksize,
-      'Content-Type': 'video/mp4',
+      'Content-Type': getMimeType(videoPath),
       'Cache-Control': 'no-cache'
     };
     
@@ -127,7 +192,7 @@ app.get('/stream/:filename', (req, res) => {
     // No range requested, send entire file
     const head = {
       'Content-Length': fileSize,
-      'Content-Type': 'video/mp4',
+      'Content-Type': getMimeType(videoPath),
       'Cache-Control': 'no-cache'
     };
     
@@ -148,7 +213,7 @@ app.get('/videos', (req, res) => {
     const files = fs.readdirSync(uploadsDir);
     const videoFiles = files.filter(file => {
       const ext = path.extname(file).toLowerCase();
-      return ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.m4v'].includes(ext);
+      return ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.m4v', '.flv', '.wmv'].includes(ext);
     }).map(file => {
       const filePath = path.join(uploadsDir, file);
       const stat = fs.statSync(filePath);
@@ -217,8 +282,32 @@ app.get('/network-info', (req, res) => {
   });
 });
 
+// Get connected clients count
+app.get('/clients-count', (req, res) => {
+  res.json({ 
+    count: connectedClients.size,
+    liveStreamActive: isLiveStreamActive 
+  });
+});
+
+// Helper function to get MIME type
+function getMimeType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  const mimeTypes = {
+    '.mp4': 'video/mp4',
+    '.avi': 'video/x-msvideo',
+    '.mov': 'video/quicktime',
+    '.mkv': 'video/x-matroska',
+    '.webm': 'video/webm',
+    '.m4v': 'video/mp4',
+    '.flv': 'video/x-flv',
+    '.wmv': 'video/x-ms-wmv'
+  };
+  return mimeTypes[ext] || 'video/mp4';
+}
+
 // Start server
-app.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`🎥 Video Streaming Server is running!`);
   console.log(`📱 Local access: http://localhost:${PORT}`);
   
@@ -235,7 +324,7 @@ app.listen(PORT, '0.0.0.0', () => {
       }
     }
   }
-  console.log('\n📂 Upload videos and share the network URL with others on your WiFi!');
+  console.log('\n📂 Upload videos and stream live audio to connected devices!');
 });
 
-module.exports = app;
+module.exports = { app, server };

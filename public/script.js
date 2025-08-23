@@ -12,17 +12,65 @@ const shareUrlInput = document.getElementById('shareUrlInput');
 const copyUrlBtn = document.getElementById('copyUrl');
 const networkInfo = document.getElementById('networkAddresses');
 
+// Live Audio Elements
+const startAudioBtn = document.getElementById('startAudioStream');
+const stopAudioBtn = document.getElementById('stopAudioStream');
+const audioStatus = document.getElementById('audioStatus');
+const audioLevelBar = document.getElementById('audioLevelBar');
+const liveAudioPlayer = document.getElementById('liveAudioPlayer');
+const connectionStatus = document.getElementById('connectionStatus');
+const clientsCount = document.getElementById('clientsCount');
+
 // Global variables
 let currentVideoFile = null;
 let networkAddresses = [];
+let socket = null;
+let mediaStream = null;
+let audioContext = null;
+let analyser = null;
+let isStreaming = false;
 
 // Initialize the app
 document.addEventListener('DOMContentLoaded', function() {
     setupEventListeners();
+    initializeSocket();
     loadNetworkInfo();
     loadVideoList();
     checkCurrentVideo();
 });
+
+// Initialize Socket.IO connection
+function initializeSocket() {
+    socket = io();
+    
+    socket.on('connect', () => {
+        console.log('Connected to server');
+        connectionStatus.textContent = '🟢 Connected';
+        connectionStatus.style.color = '#38a169';
+        updateClientsCount();
+    });
+    
+    socket.on('disconnect', () => {
+        console.log('Disconnected from server');
+        connectionStatus.textContent = '🔴 Disconnected';
+        connectionStatus.style.color = '#e53e3e';
+    });
+    
+    socket.on('audioStream', (audioData) => {
+        playReceivedAudio(audioData);
+    });
+    
+    socket.on('liveStreamStarted', () => {
+        showNotification('Live audio stream started by another user', 'info');
+    });
+    
+    socket.on('liveStreamStopped', () => {
+        showNotification('Live audio stream stopped', 'info');
+    });
+    
+    // Update clients count periodically
+    setInterval(updateClientsCount, 5000);
+}
 
 // Setup event listeners
 function setupEventListeners() {
@@ -38,6 +86,10 @@ function setupEventListeners() {
     // Other buttons
     refreshListBtn.addEventListener('click', loadVideoList);
     copyUrlBtn.addEventListener('click', copyShareUrl);
+    
+    // Audio streaming buttons
+    startAudioBtn.addEventListener('click', startAudioStreaming);
+    stopAudioBtn.addEventListener('click', stopAudioStreaming);
 }
 
 // Handle file selection
@@ -71,7 +123,7 @@ function handleFileDrop(event) {
         if (file.type.startsWith('video/')) {
             uploadFile(file);
         } else {
-            showNotification('Please select a valid video file', 'error');
+            showNotification('Please select a valid video file (MP4, AVI, MOV, MKV, WebM, M4V, FLV, WMV)', 'error');
         }
     }
 }
@@ -336,3 +388,140 @@ videoPlayer.addEventListener('canplay', function() {
 videoPlayer.addEventListener('loadedmetadata', function() {
     console.log('Video metadata loaded');
 });
+
+// Live Audio Streaming Functions
+async function startAudioStreaming() {
+    try {
+        // Request microphone access
+        mediaStream = await navigator.mediaDevices.getUserMedia({ 
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            } 
+        });
+        
+        // Setup audio context for visualization
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioContext.createMediaStreamSource(mediaStream);
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        
+        // Setup MediaRecorder for streaming
+        const mediaRecorder = new MediaRecorder(mediaStream, {
+            mimeType: 'audio/webm;codecs=opus'
+        });
+        
+        mediaRecorder.ondataavailable = function(event) {
+            if (event.data.size > 0 && socket) {
+                const reader = new FileReader();
+                reader.onload = function() {
+                    socket.emit('audioStream', reader.result);
+                };
+                reader.readAsArrayBuffer(event.data);
+            }
+        };
+        
+        // Start recording in chunks
+        mediaRecorder.start(100); // Send audio data every 100ms
+        
+        isStreaming = true;
+        startAudioBtn.style.display = 'none';
+        stopAudioBtn.style.display = 'inline-flex';
+        audioStatus.textContent = '🎤 Live streaming...';
+        audioStatus.style.color = '#e53e3e';
+        
+        // Start audio level visualization
+        visualizeAudioLevel();
+        
+        // Notify other clients
+        socket.emit('startLiveStream');
+        
+        showNotification('Live audio streaming started!', 'success');
+        
+    } catch (error) {
+        console.error('Error starting audio stream:', error);
+        showNotification('Failed to start audio stream. Please allow microphone access.', 'error');
+    }
+}
+
+function stopAudioStreaming() {
+    if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+    }
+    
+    if (audioContext) {
+        audioContext.close();
+        audioContext = null;
+    }
+    
+    isStreaming = false;
+    startAudioBtn.style.display = 'inline-flex';
+    stopAudioBtn.style.display = 'none';
+    audioStatus.textContent = '🔇 Audio streaming off';
+    audioStatus.style.color = '#718096';
+    audioLevelBar.style.width = '0%';
+    
+    // Notify other clients
+    if (socket) {
+        socket.emit('stopLiveStream');
+    }
+    
+    showNotification('Live audio streaming stopped', 'info');
+}
+
+function visualizeAudioLevel() {
+    if (!analyser || !isStreaming) return;
+    
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    
+    function updateLevel() {
+        if (!isStreaming) return;
+        
+        analyser.getByteFrequencyData(dataArray);
+        
+        // Calculate average volume
+        const average = dataArray.reduce((sum, value) => sum + value, 0) / bufferLength;
+        const percentage = (average / 255) * 100;
+        
+        audioLevelBar.style.width = percentage + '%';
+        
+        requestAnimationFrame(updateLevel);
+    }
+    
+    updateLevel();
+}
+
+function playReceivedAudio(audioData) {
+    try {
+        const audioBlob = new Blob([audioData], { type: 'audio/webm;codecs=opus' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        // Create temporary audio element for playback
+        const audio = new Audio(audioUrl);
+        audio.play().catch(error => {
+            console.error('Error playing received audio:', error);
+        });
+        
+        // Clean up URL after playing
+        audio.addEventListener('ended', () => {
+            URL.revokeObjectURL(audioUrl);
+        });
+        
+    } catch (error) {
+        console.error('Error playing received audio:', error);
+    }
+}
+
+async function updateClientsCount() {
+    try {
+        const response = await fetch('/clients-count');
+        const data = await response.json();
+        clientsCount.textContent = `👥 ${data.count} connected`;
+    } catch (error) {
+        console.error('Failed to update clients count:', error);
+    }
+}

@@ -5,12 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Stream WebApp</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
     <div class="container">
         <header>
             <h1>🎥 Video Stream WebApp</h1>
-            <p>Upload and stream videos over your local network</p>
+            <p>Upload videos, stream live audio, and share over your local network</p>
+            <div class="connection-status">
+                <span id="connectionStatus">🔌 Connecting...</span>
+                <span id="clientsCount">👥 0 connected</span>
+            </div>
         </header>
 
         <div class="network-info" id="networkInfo">
@@ -25,7 +30,7 @@
                 <div class="upload-content">
                     <div class="upload-icon">📹</div>
                     <p>Click to select a video file or drag and drop</p>
-                    <small>Supported formats: MP4, AVI, MOV, MKV, WebM, M4V</small>
+                    <small>Supported formats: MP4, AVI, MOV, MKV, WebM, M4V, FLV, WMV</small>
                 </div>
             </div>
             <div class="upload-progress" id="uploadProgress" style="display: none;">
@@ -36,6 +41,24 @@
             </div>
         </div>
 
+        <div class="live-audio-section">
+            <h2>🎤 Live Audio Stream</h2>
+            <div class="audio-controls">
+                <button id="startAudioStream" class="btn btn-primary">🎙️ Start Live Audio</button>
+                <button id="stopAudioStream" class="btn btn-danger" style="display: none;">⏹️ Stop Live Audio</button>
+                <div class="audio-status">
+                    <span id="audioStatus">🔇 Audio streaming off</span>
+                    <div id="audioLevel" class="audio-level">
+                        <div id="audioLevelBar" class="audio-level-bar"></div>
+                    </div>
+                </div>
+            </div>
+            <p class="audio-description">
+                📢 Stream your laptop's audio live to all connected devices. 
+                Perfect for synchronized audio experiences!
+            </p>
+        </div>
+
         <div class="video-section">
             <h2>🎬 Current Video</h2>
             <div id="currentVideoInfo" class="video-info">
@@ -44,6 +67,7 @@
             <video id="videoPlayer" controls style="display: none;" width="100%" height="400">
                 Your browser does not support the video tag.
             </video>
+            <audio id="liveAudioPlayer" style="display: none;" autoplay></audio>
         </div>
 
         <div class="video-list-section">
