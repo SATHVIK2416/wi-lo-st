@@ -1,26 +1,24 @@
 {
-  "name": "video-stream-webapp",
+  "name": "live-audio-share",
   "version": "1.0.0",
-  "description": "A web application for streaming video files over local network",
+  "description": "Lightweight local-network system audio live streaming app",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
   "keywords": [
-    "video",
+    "audio",
+    "live",
     "streaming",
-    "webapp",
     "local-network"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "cors": "^2.8.5",
-    "express": "^4.18.2",
-    "multer": "^1.4.5-lts.1",
-    "path": "^0.12.7",
-    "socket.io": "^4.8.1"
+  "cors": "^2.8.5",
+  "express": "^4.18.2",
+  "socket.io": "^4.8.1"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"

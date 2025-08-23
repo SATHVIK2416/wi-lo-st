@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Stream WebApp</title>
+    <title>Live Audio Share</title>
     <link rel="stylesheet" href="styles.css">
     <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🎥 Video Stream WebApp</h1>
-            <p>Upload videos, stream live audio, and share over your local network</p>
+            <h1>🔊 Live Audio Share</h1>
+            <p>Stream your system audio to all devices on your network</p>
             <div class="connection-status">
                 <span id="connectionStatus">🔌 Connecting...</span>
                 <span id="clientsCount">👥 0 connected</span>
@@ -23,23 +23,7 @@
             <div id="networkAddresses"></div>
         </div>
 
-        <div class="upload-section">
-            <h2>📁 Upload Video</h2>
-            <div class="upload-area" id="uploadArea">
-                <input type="file" id="fileInput" accept="video/*" style="display: none;">
-                <div class="upload-content">
-                    <div class="upload-icon">📹</div>
-                    <p>Click to select a video file or drag and drop</p>
-                    <small>Supported formats: MP4, AVI, MOV, MKV, WebM, M4V, FLV, WMV</small>
-                </div>
-            </div>
-            <div class="upload-progress" id="uploadProgress" style="display: none;">
-                <div class="progress-bar">
-                    <div class="progress-fill" id="progressFill"></div>
-                </div>
-                <span id="progressText">0%</span>
-            </div>
-        </div>
+    <!-- Video upload removed -->
 
         <div class="live-audio-section">
             <h2>🎤 System Audio Stream</h2>
@@ -69,31 +53,30 @@
             </div>
         </div>
 
-        <div class="video-section">
-            <h2>🎬 Current Video</h2>
-            <div id="currentVideoInfo" class="video-info">
-                <p>No video loaded</p>
-            </div>
-            <video id="videoPlayer" controls style="display: none;" width="100%" height="400">
-                Your browser does not support the video tag.
-            </video>
-            <audio id="liveAudioPlayer" style="display: none;" autoplay></audio>
-        </div>
-
-        <div class="video-list-section">
-            <h2>📚 Available Videos</h2>
-            <div id="videoList" class="video-list">
-                <!-- Video list will be populated here -->
-            </div>
-            <button id="refreshList" class="btn btn-secondary">🔄 Refresh List</button>
-        </div>
+    <!-- Video playback/list removed -->
 
         <div class="share-section">
-            <h2>📤 Share Video</h2>
-            <p>Share this URL with others on your network to let them watch the video:</p>
-            <div class="share-url" id="shareUrl">
-                <input type="text" id="shareUrlInput" readonly>
-                <button id="copyUrl" class="btn btn-primary">📋 Copy</button>
+            <h2>� Share</h2>
+            <p>Give listeners the lightweight page or the full control page:</p>
+            
+            <div class="share-options">
+                <div class="share-option">
+                    <h3>🎧 Audio Listener (Recommended)</h3>
+                    <p>Optimized page for devices that only need to listen to audio</p>
+                    <div class="share-url">
+                        <input type="text" id="listenUrlInput" readonly>
+                        <button id="copyListenUrl" class="btn btn-primary">📋 Copy</button>
+                    </div>
+                </div>
+                
+                <div class="share-option">
+                    <h3>🛠️ Control Page</h3>
+                    <p>Page used by the host to start / stop audio broadcast</p>
+                    <div class="share-url">
+                        <input type="text" id="shareUrlInput" readonly>
+                        <button id="copyUrl" class="btn btn-primary">📋 Copy</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>

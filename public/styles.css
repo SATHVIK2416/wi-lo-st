@@ -340,6 +340,30 @@ header p {
     background: #f8f9fa;
 }
 
+.share-options {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.share-option {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 10px;
+    border-left: 4px solid #667eea;
+}
+
+.share-option h3 {
+    margin: 0 0 10px 0;
+    color: #4a5568;
+}
+
+.share-option p {
+    margin: 0 0 15px 0;
+    color: #718096;
+    font-size: 0.9rem;
+}
+
 .notification {
     position: fixed;
     top: 20px;

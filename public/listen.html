@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🎧 Audio Listener</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:"Segoe UI",Tahoma,Verdana,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;color:#fff}
+        .listener-container{background:rgba(255,255,255,.12);padding:40px 38px;border-radius:22px;backdrop-filter:blur(12px);box-shadow:0 8px 28px -6px rgba(0,0,0,.35);max-width:520px;width:92%;text-align:center}
+        h1{font-size:2.8rem;margin-bottom:14px;letter-spacing:.5px;text-shadow:2px 3px 6px rgba(0,0,0,.25)}
+        .status{font-size:1.25rem;margin:18px 0;padding:14px 18px;border-radius:14px;background:rgba(255,255,255,.2)}
+        .connection-status{display:flex;justify-content:center;gap:18px;flex-wrap:wrap;margin-bottom:18px}
+        .status-item{background:rgba(255,255,255,.18);padding:10px 18px;border-radius:18px;font-size:.9rem}
+        .audio-visualizer{width:100%;height:64px;background:rgba(255,255,255,.11);border-radius:36px;margin:18px 0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+        .visualizer-bar{width:4px;margin:0 1px;background:linear-gradient(to top,#667eea,#764ba2,#fff);border-radius:2px;height:20%;transition:height .12s linear}
+        .volume-control{margin:14px 0 6px}
+        .volume-slider{width:100%;height:6px;border-radius:3px;background:rgba(255,255,255,.35);outline:none;appearance:none;-webkit-appearance:none}
+        .volume-slider::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:#fff;cursor:pointer;box-shadow:0 0 0 3px rgba(255,255,255,.45)}
+        .btn{background:rgba(255,255,255,.22);color:#fff;border:2px solid rgba(255,255,255,.35);padding:11px 24px;border-radius:28px;font-size:.95rem;cursor:pointer;transition:.25s;margin:4px 6px;min-width:140px}
+        .btn:hover{background:rgba(255,255,255,.38);transform:translateY(-2px)}
+        .info-text{font-size:.8rem;opacity:.85;line-height:1.45;margin-top:18px}
+        a{color:#fff}
+        .notification{position:fixed;top:18px;right:18px;background:rgba(56,161,105,.92);padding:12px 18px;border-radius:12px;transform:translateX(340px);transition:transform .3s ease;font-size:.9rem;box-shadow:0 6px 18px -4px rgba(0,0,0,.4);z-index:1000}
+        .notification.show{transform:translateX(0)}
+        .notification.error{background:rgba(229,62,62,.92)}
+        @media (max-width:640px){h1{font-size:2.1rem}.listener-container{padding:32px 26px}}
+    </style>
+</head>
+<body>
+    <div class="listener-container">
+        <h1>🎧 Audio Listener</h1>
+        <div id="audioStatus" class="status">🔇 Waiting for audio stream...</div>
+        <div class="connection-status">
+            <div id="connectionStatus" class="status-item">🔌 Connecting...</div>
+            <div id="clientsCount" class="status-item">👥 0 listening</div>
+        </div>
+        <div id="audioVisualizer" class="audio-visualizer"></div>
+        <div class="volume-control">
+            <label for="volumeSlider">🔊 Volume</label><br />
+            <input id="volumeSlider" type="range" class="volume-slider" min="0" max="100" value="100" />
+            <div id="volumeDisplay">100%</div>
+        </div>
+        <div class="controls">
+            <button id="enableAudio" class="btn">🔊 Enable Audio</button>
+            <button id="muteAudio" class="btn" style="display:none;">🔇 Mute</button>
+        </div>
+        <div class="info-text">Ensure you're on the same WiFi as the host. Press Enable to join the live system audio stream.</div>
+        <div class="info-text" style="margin-top:28px"><a href="/">← Back to Main App</a></div>
+    </div>
+    <div id="notification" class="notification"></div>
+    <script>
+        let socket, pc, audioEl, hostIdRef=null; const bars=[]; let muted=false, volume=1.0;
+        const qs=id=>document.getElementById(id);
+        const audioStatus=qs('audioStatus'), connectionStatus=qs('connectionStatus'), clientsCount=qs('clientsCount'), vis=qs('audioVisualizer'), volumeSlider=qs('volumeSlider'), volumeDisplay=qs('volumeDisplay'), enableBtn=qs('enableAudio'), muteBtn=qs('muteAudio'), note=qs('notification');
+        document.addEventListener('DOMContentLoaded',()=>{ initBars(); initSocket(); bindUi(); });
+        function initBars(){ for(let i=0;i<40;i++){ const b=document.createElement('div'); b.className='visualizer-bar'; vis.appendChild(b); bars.push(b);} }
+        function bindUi(){ volumeSlider.addEventListener('input',()=>{ volume=volumeSlider.value/100; volumeDisplay.textContent=volumeSlider.value+'%'; if(audioEl) audioEl.volume=volume; }); enableBtn.addEventListener('click', joinStream); muteBtn.addEventListener('click', toggleMute);}    
+        function initSocket(){ socket=io(); socket.on('connect',()=>{ connectionStatus.textContent='🟢 Connected'; connectionStatus.style.color='#38a169'; }); socket.on('disconnect',()=>{ connectionStatus.textContent='🔴 Disconnected'; connectionStatus.style.color='#e53e3e'; audioStatus.textContent='🔇 Disconnected'; teardown(); }); socket.on('no-host',()=>{ audioStatus.textContent='❌ No host'; flash('No host streaming','error'); enableBtn.style.display='inline-block'; }); socket.on('host-left',()=>{ audioStatus.textContent='🔇 Host left'; flash('Host left','error'); teardown(); }); socket.on('webrtc-offer', async ({ sdp, hostId })=>{ hostIdRef=hostId; await ensurePeer(); await pc.setRemoteDescription(new RTCSessionDescription(sdp)); const answer=await pc.createAnswer(); await pc.setLocalDescription(answer); socket.emit('webrtc-answer',{ hostId, sdp:answer }); }); socket.on('webrtc-ice-candidate', ({ candidate, from })=>{ if(pc && candidate && from===hostIdRef){ pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(()=>{}); }}); socket.on('stats', ({ viewerCount })=>{ clientsCount.textContent=`👥 ${viewerCount} listening`; }); }
+        async function joinStream(){ enableBtn.style.display='none'; muteBtn.style.display='inline-block'; audioStatus.textContent='⏳ Joining...'; socket.emit('viewer-join'); flash('Request sent'); }
+        async function ensurePeer(){ if(pc) return; pc=new RTCPeerConnection({ iceServers:[{urls:'stun:stun.l.google.com:19302'}]}); pc.onicecandidate=e=>{ if(e.candidate&&hostIdRef) socket.emit('webrtc-ice-candidate',{ targetId:hostIdRef, candidate:e.candidate }); }; pc.ontrack=e=>{ if(!audioEl){ audioEl=new Audio(); audioEl.autoplay=true; audioEl.volume=volume; document.body.appendChild(audioEl);} audioEl.srcObject=e.streams[0]; audioStatus.textContent='🎵 Live'; animate(); }; pc.onconnectionstatechange=()=>{ if(['failed','disconnected','closed'].includes(pc.connectionState)) teardown(); }; }
+        function toggleMute(){ muted=!muted; if(audioEl) audioEl.muted=muted; muteBtn.textContent=muted?'🔊 Unmute':'🔇 Mute'; }
+        function teardown(){ if(pc){ pc.close(); pc=null;} if(audioEl){ audioEl.srcObject=null; audioEl.remove(); audioEl=null;} bars.forEach(b=>b.style.height='20%'); enableBtn.style.display='inline-block'; muteBtn.style.display='none'; }
+        function animate(){ function step(){ if(!pc||!audioEl||audioEl.paused) return; bars.forEach(b=>{ b.style.height=(Math.random()*80+20)+'%';}); requestAnimationFrame(step); } requestAnimationFrame(step); }
+        function flash(msg,type='success'){ note.textContent=msg; note.className=`notification ${type} show`; setTimeout(()=>note.classList.remove('show'),2500); }
+    </script>
+</body>
+</html>
