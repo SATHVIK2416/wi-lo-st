@@ -1,18 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Audio Share</title>
-        <link rel="stylesheet" href="styles.css">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Live Audio Share</title>
+        <link rel="stylesheet" href="styles.css" />
         <style>
             body.oled { background:#000; color:#e5e5e5; }
             .panel-dark { background:#0d0d0d; border:1px solid #1f1f1f; box-shadow:0 0 0 1px #111,0 0 0 4px #000; }
-            .neon-accent { color:#6d7dff; }
             .viewer-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
             .viewer-chip { background:#141414; border:1px solid #232323; padding:4px 10px; border-radius:16px; font-size:12px; font-family:monospace; color:#9aa0b5; }
             .section-title { font-weight:600; letter-spacing:.5px; color:#9aa8ff; }
-            .live-audio-section.panel-dark, .share-section.panel-dark, .network-info.panel-dark { background:#0d0d0d; }
             .btn { border-radius:10px !important; }
             .btn-primary { background:#111 !important; border:1px solid #2a2a2a !important; color:#b7c2ff !important; }
             .btn-primary:hover { background:#181818 !important; }
@@ -23,121 +21,112 @@
             header h1 { color:#fafafa; }
             header p { color:#8a8f9d; }
         </style>
-    <script src="/socket.io/socket.io.js"></script>
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>🔊 Live Audio Share</h1>
-            <p>Stream your system audio to all devices on your network</p>
-            <div class="connection-status">
-                <span id="connectionStatus">🔌 Connecting...</span>
-                <span id="clientsCount">👥 0 connected</span>
-            </div>
-        </header>
-
-    <div class="network-info panel-dark" id="networkInfo">
-            <h3>📡 Network Information</h3>
-            <div id="networkAddresses"></div>
-        </div>
-
-    <!-- Video upload removed -->
-
-    <div class="live-audio-section panel-dark">
-            <h2>🎤 System Audio Stream</h2>
-            <div class="audio-controls">
-                <button id="startAudioStream" class="btn btn-primary">🔊 Share System Audio</button>
-                <button id="stopAudioStream" class="btn btn-danger" style="display: none;">⏹️ Stop Sharing</button>
-                <div class="audio-status">
-                    <span id="audioStatus">🔇 System audio not shared</span>
-                    <div id="audioLevel" class="audio-level">
-                        <div id="audioLevelBar" class="audio-level-bar"></div>
-                    </div>
+        <script src="/socket.io/socket.io.js"></script>
+    </head>
+    <body>
+        <div class="container">
+            <header>
+                <h1>🔊 Live Audio Share</h1>
+                <p>Stream your system audio to all devices on your network</p>
+                <div class="connection-status">
+                    <span id="connectionStatus">🔌 Connecting...</span>
+                    <span id="clientsCount">👥 0 connected</span>
                 </div>
+            </header>
+
+            <div class="network-info panel-dark" id="networkInfo">
+                <h3>📡 Network Information</h3>
+                <div id="networkAddresses"></div>
             </div>
-                        <div class="tuning panel-dark" style="margin-top:10px;padding:10px;border:1px solid #1f1f1f;border-radius:8px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
-                            <div style="flex:1;min-width:140px">
-                                <label style="font-size:.7rem;letter-spacing:1px;text-transform:uppercase;opacity:.7">Latency Target (ms)</label>
-                                <input type="number" id="latencyInput" value="200" min="80" max="800" step="20" style="width:100%;padding:6px 8px;background:#101010;border:1px solid #2a2a2a;color:#b7c2ff;border-radius:6px;font-family:monospace" />
-                            </div>
-                            <div style="flex:1;min-width:140px">
-                                <label style="font-size:.7rem;letter-spacing:1px;text-transform:uppercase;opacity:.7">Bitrate (kbps)</label>
-                                <input type="number" id="bitrateInput" value="192" min="64" max="320" step="16" style="width:100%;padding:6px 8px;background:#101010;border:1px solid #2a2a2a;color:#b7c2ff;border-radius:6px;font-family:monospace" />
-                            </div>
-                            <button id="applyTuning" class="btn btn-primary btn-small" style="height:38px;">Apply</button>
-                            <div id="tuneStatus" style="font-size:.65rem;opacity:.6;flex-basis:100%">Target: 200ms / 192kbps</div>
+
+            <div class="live-audio-section panel-dark">
+                <h2>🎤 System Audio Stream</h2>
+                <div class="audio-controls">
+                    <button id="startAudioStream" class="btn btn-primary">🔊 Share System Audio</button>
+                    <button id="stopAudioStream" class="btn btn-danger" style="display:none;">⏹️ Stop Sharing</button>
+                    <div class="audio-status">
+                        <span id="audioStatus">🔇 System audio not shared</span>
+                        <div id="audioLevel" class="audio-level">
+                            <div id="audioLevelBar" class="audio-level-bar"></div>
                         </div>
-            <p class="audio-description">
-                📢 Share your laptop's system audio (from videos, music, etc.) live to all connected devices. 
-                This captures whatever audio is playing on your computer!
-            </p>
-            <div class="audio-instructions">
-                <h4>📋 How to use:</h4>
-                <ol>
-                    <li>Click "🔊 Share System Audio"</li>
-                    <li>Select "Share your entire screen" or "Share a window"</li>
-                    <li>Make sure "Share audio" is checked</li>
-                    <li>Play any video/music on your laptop</li>
-                    <li>Audio will stream to all connected devices</li>
-                </ol>
+                    </div>
+                </div>
+                <div class="tuning panel-dark" style="margin-top:10px;padding:10px;border:1px solid #1f1f1f;border-radius:8px;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;">
+                    <div style="flex:1;min-width:140px;">
+                        <label style="font-size:.7rem;letter-spacing:1px;text-transform:uppercase;opacity:.7;">Latency Target (ms)</label>
+                        <input type="number" id="latencyInput" value="200" min="80" max="800" step="20" style="width:100%;padding:6px 8px;background:#101010;border:1px solid #2a2a2a;color:#b7c2ff;border-radius:6px;font-family:monospace;" />
+                    </div>
+                    <div style="flex:1;min-width:140px;">
+                        <label style="font-size:.7rem;letter-spacing:1px;text-transform:uppercase;opacity:.7;">Bitrate (kbps)</label>
+                        <input type="number" id="bitrateInput" value="192" min="64" max="320" step="16" style="width:100%;padding:6px 8px;background:#101010;border:1px solid #2a2a2a;color:#b7c2ff;border-radius:6px;font-family:monospace;" />
+                    </div>
+                    <button id="applyTuning" class="btn btn-primary btn-small" style="height:38px;">Apply</button>
+                    <div id="tuneStatus" style="font-size:.65rem;opacity:.6;flex-basis:100%;">Target: 200ms / 192kbps</div>
+                </div>
+                <p class="audio-description">📢 Share your laptop's system audio (from videos, music, etc.) live to all connected devices. This captures whatever audio is playing on your computer!</p>
+                <div class="audio-instructions">
+                    <h4>📋 How to use:</h4>
+                    <ol>
+                        <li>Click "🔊 Share System Audio"</li>
+                        <li>Select "Share your entire screen" or "Share a window"</li>
+                        <li>Make sure "Share audio" is checked</li>
+                        <li>Play any video/music on your laptop</li>
+                        <li>Audio will stream to all connected devices</li>
+                    </ol>
+                </div>
             </div>
-        </div>
 
-    <!-- Video playback/list removed -->
-
-                <div class="share-section panel-dark">
-            <h2>� Share</h2>
-            <p>Give listeners the lightweight page or the full control page:</p>
-                        <div class="panel-dark" style="padding:14px;margin-top:18px;border-radius:10px;border:1px solid #1f1f1f;">
-                            <div class="section-title">👥 Connected Viewers (<span id="viewerCountInline">0</span>)</div>
-                            <div id="viewerList" class="viewer-list"></div>
+            <div class="share-section panel-dark">
+                <h2>Share</h2>
+                <p>Give listeners the lightweight page or the full control page:</p>
+                <div class="panel-dark" style="padding:14px;margin-top:18px;border-radius:10px;border:1px solid #1f1f1f;">
+                    <div class="section-title">👥 Connected Viewers (<span id="viewerCountInline">0</span>)</div>
+                    <div id="viewerList" class="viewer-list"></div>
+                </div>
+                <div class="share-options">
+                    <div class="share-option">
+                        <h3>🎧 Audio Listener (Recommended)</h3>
+                        <p>Optimized page for devices that only need to listen to audio</p>
+                        <div class="share-url">
+                            <input type="text" id="listenUrlInput" readonly />
+                            <button id="copyListenUrl" class="btn btn-primary">📋 Copy</button>
                         </div>
-            
-            <div class="share-options">
-                <div class="share-option">
-                    <h3>🎧 Audio Listener (Recommended)</h3>
-                    <p>Optimized page for devices that only need to listen to audio</p>
-                    <div class="share-url">
-                        <input type="text" id="listenUrlInput" readonly>
-                        <button id="copyListenUrl" class="btn btn-primary">📋 Copy</button>
                     </div>
-                </div>
-                
-                <div class="share-option">
-                    <h3>🛠️ Control Page</h3>
-                    <p>Page used by the host to start / stop audio broadcast</p>
-                    <div class="share-url">
-                        <input type="text" id="shareUrlInput" readonly>
-                        <button id="copyUrl" class="btn btn-primary">📋 Copy</button>
+                    <div class="share-option">
+                        <h3>🛠️ Control Page</h3>
+                        <p>Page used by the host to start / stop audio broadcast</p>
+                        <div class="share-url">
+                            <input type="text" id="shareUrlInput" readonly />
+                            <button id="copyUrl" class="btn btn-primary">📋 Copy</button>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <div id="notification" class="notification"></div>
-
+        <div id="notification" class="notification"></div>
         <script src="script.js"></script>
         <script>
             document.body.classList.add('oled');
-            // Extend existing socket stats handling after script.js loads
             (function waitForSocket(){
-                if (window.socket){
-                    socket.on('stats', ({viewerIds, viewerCount})=>{
+                if(window.socket){
+                    socket.on('stats', ({ viewerIds, viewerCount }) => {
                         const listEl = document.getElementById('viewerList');
                         const countInline = document.getElementById('viewerCountInline');
-                        if (!listEl) return;
+                        if(!listEl) return;
                         listEl.innerHTML = '';
-                        (viewerIds||[]).forEach(id=>{
-                            const chip=document.createElement('div');
-                            chip.className='viewer-chip';
-                            chip.textContent=id;
+                        (viewerIds||[]).forEach(id => {
+                            const chip = document.createElement('div');
+                            chip.className = 'viewer-chip';
+                            chip.textContent = id;
                             listEl.appendChild(chip);
                         });
-                        if(countInline) countInline.textContent = viewerCount || (viewerIds?viewerIds.length:0);
+                        if(countInline) countInline.textContent = viewerCount || (viewerIds ? viewerIds.length : 0);
                     });
-                } else { setTimeout(waitForSocket,100); }
+                } else {
+                    setTimeout(waitForSocket, 100);
+                }
             })();
         </script>
-</body>
+    </body>
 </html>

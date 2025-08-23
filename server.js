@@ -1,4 +1,4 @@
-// WebRTC Signaling + Static Hosting Server (Audio Broadcast)
+// WebRTC signaling + static file host for low-latency system audio broadcast
 const express = require('express');
 const path = require('path');
 const http = require('http');
@@ -10,69 +10,53 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: '*' } });
 const PORT = process.env.PORT || 3000;
 
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Track host socket (only one broadcaster) and peer connections meta
-let hostSocketId = null;
-// Maintain map of viewerId -> simple metadata (createdAt)
-const viewers = new Map();
+let hostSocketId = null;              // current broadcaster socket id
+const viewers = new Map();            // viewerId -> { createdAt }
 
 io.on('connection', socket => {
-  console.log('🔌 Socket connected', socket.id);
+  console.log('🔌 connect', socket.id);
 
-  // Host announces itself
   socket.on('register-host', () => {
     hostSocketId = socket.id;
-    console.log('🎙️ Host registered:', socket.id);
+    console.log('🎙️ host', socket.id);
     socket.emit('host-confirmed');
-  broadcastStats();
+    broadcastStats();
   });
 
-  // Host announces it has started streaming (ensure late viewers get offers)
   socket.on('announce-streaming', () => {
-    if (socket.id !== hostSocketId) return; // only host
-    console.log('📣 Host streaming announced, re-notifying viewers');
+    if (socket.id !== hostSocketId) return;
     viewers.forEach((_, vid) => io.to(hostSocketId).emit('viewer-joined', { viewerId: vid }));
-    // Also let viewers know they can (re)join if they loaded early
     io.emit('host-streaming');
   });
 
-  // Viewer joins; server notifies host to create an offer
   socket.on('viewer-join', () => {
-    if (!hostSocketId) {
-      socket.emit('no-host');
-      return;
-    }
+    if (!hostSocketId) return socket.emit('no-host');
     viewers.set(socket.id, { createdAt: Date.now() });
     io.to(hostSocketId).emit('viewer-joined', { viewerId: socket.id });
-  broadcastStats();
+    broadcastStats();
   });
 
-  // Host sends offer to specific viewer
   socket.on('webrtc-offer', ({ viewerId, sdp }) => {
     io.to(viewerId).emit('webrtc-offer', { sdp, hostId: socket.id });
   });
 
-  // Viewer sends answer back
   socket.on('webrtc-answer', ({ hostId, sdp }) => {
     io.to(hostId).emit('webrtc-answer', { sdp, viewerId: socket.id });
   });
 
-  // ICE candidates relay
   socket.on('webrtc-ice-candidate', ({ targetId, candidate }) => {
     if (targetId) io.to(targetId).emit('webrtc-ice-candidate', { candidate, from: socket.id });
   });
 
-  // Host can request viewer removal
   socket.on('disconnect-viewer', ({ viewerId }) => {
     if (viewers.has(viewerId)) io.to(viewerId).emit('disconnect-request');
   });
 
   socket.on('disconnect', () => {
     if (socket.id === hostSocketId) {
-      console.log('❌ Host disconnected');
       hostSocketId = null;
-      // Notify all viewers host is gone
       viewers.forEach((_, vid) => io.to(vid).emit('host-left'));
       viewers.clear();
       broadcastStats();
@@ -81,7 +65,7 @@ io.on('connection', socket => {
       if (hostSocketId) io.to(hostSocketId).emit('viewer-left', { viewerId: socket.id });
       broadcastStats();
     }
-    console.log('🔌 Socket disconnected', socket.id);
+    console.log('🔌 disconnect', socket.id);
   });
 });
 
@@ -93,8 +77,7 @@ function broadcastStats() {
   });
 }
 
-// Helper route for LAN addresses
-app.get('/network-info', (req, res) => {
+app.get('/network-info', (_req, res) => {
   const interfaces = os.networkInterfaces();
   const addresses = [];
   for (const name in interfaces) {
@@ -107,25 +90,23 @@ app.get('/network-info', (req, res) => {
   res.json({ addresses, localUrl: `http://localhost:${PORT}` });
 });
 
-// Simple stats endpoint
-app.get('/stats', (req, res) => {
+app.get('/stats', (_req, res) => {
   res.json({ viewerCount: viewers.size, hostPresent: !!hostSocketId });
 });
 
-app.get('/', (_, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-app.get('/listen', (_, res) => res.sendFile(path.join(__dirname, 'public', 'listen.html')));
+app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('/listen', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'listen.html')));
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n🔊 Live Audio Share (WebRTC) running on port ${PORT}`);
-  console.log(`📱 Local: http://localhost:${PORT}`);
+  console.log(`\n🔊 Live Audio Share (WebRTC) :${PORT}`);
+  console.log(`📱 Local  http://localhost:${PORT}`);
   const interfaces = os.networkInterfaces();
-  console.log('🌐 Network:');
   for (const name in interfaces) {
     for (const net of interfaces[name]) {
-      if (net.family === 'IPv4' && !net.internal) console.log(`   http://${net.address}:${PORT}`);
+      if (net.family === 'IPv4' && !net.internal) console.log(`🌐 ${name}  http://${net.address}:${PORT}`);
     }
   }
-  console.log('\nOpen / in a modern Chromium-based browser to host, /listen to join.');
+  console.log('\nHost: /  |  Listener: /listen');
 });
 
 module.exports = { app, server };
