@@ -28,6 +28,15 @@ io.on('connection', socket => {
   broadcastStats();
   });
 
+  // Host announces it has started streaming (ensure late viewers get offers)
+  socket.on('announce-streaming', () => {
+    if (socket.id !== hostSocketId) return; // only host
+    console.log('📣 Host streaming announced, re-notifying viewers');
+    viewers.forEach((_, vid) => io.to(hostSocketId).emit('viewer-joined', { viewerId: vid }));
+    // Also let viewers know they can (re)join if they loaded early
+    io.emit('host-streaming');
+  });
+
   // Viewer joins; server notifies host to create an offer
   socket.on('viewer-join', () => {
     if (!hostSocketId) {
@@ -77,7 +86,11 @@ io.on('connection', socket => {
 });
 
 function broadcastStats() {
-  io.emit('stats', { viewerCount: viewers.size, hostPresent: !!hostSocketId });
+  io.emit('stats', {
+    viewerCount: viewers.size,
+    hostPresent: !!hostSocketId,
+    viewerIds: Array.from(viewers.keys())
+  });
 }
 
 // Helper route for LAN addresses
