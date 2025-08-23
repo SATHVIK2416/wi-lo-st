@@ -389,27 +389,39 @@ videoPlayer.addEventListener('loadedmetadata', function() {
     console.log('Video metadata loaded');
 });
 
-// Live Audio Streaming Functions
+// Live Audio Streaming Functions - System Audio Capture
 async function startAudioStreaming() {
     try {
-        // Request microphone access
-        mediaStream = await navigator.mediaDevices.getUserMedia({ 
+        // Request screen share with audio to capture system audio
+        mediaStream = await navigator.mediaDevices.getDisplayMedia({ 
+            video: true, // We need video to get audio, but we'll only use audio
             audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false,
+                suppressLocalAudioPlayback: false
             } 
         });
         
+        // Check if audio track is available
+        const audioTracks = mediaStream.getAudioTracks();
+        if (audioTracks.length === 0) {
+            throw new Error('No audio track available. Make sure to check "Share audio" when selecting screen/window.');
+        }
+        
+        // Create audio-only stream
+        const audioOnlyStream = new MediaStream();
+        audioTracks.forEach(track => audioOnlyStream.addTrack(track));
+        
         // Setup audio context for visualization
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const source = audioContext.createMediaStreamSource(mediaStream);
+        const source = audioContext.createMediaStreamSource(audioOnlyStream);
         analyser = audioContext.createAnalyser();
         analyser.fftSize = 256;
         source.connect(analyser);
         
-        // Setup MediaRecorder for streaming
-        const mediaRecorder = new MediaRecorder(mediaStream, {
+        // Setup MediaRecorder for streaming audio only
+        const mediaRecorder = new MediaRecorder(audioOnlyStream, {
             mimeType: 'audio/webm;codecs=opus'
         });
         
@@ -426,10 +438,14 @@ async function startAudioStreaming() {
         // Start recording in chunks
         mediaRecorder.start(100); // Send audio data every 100ms
         
+        // Stop video track to save resources (we only need audio)
+        const videoTracks = mediaStream.getVideoTracks();
+        videoTracks.forEach(track => track.stop());
+        
         isStreaming = true;
         startAudioBtn.style.display = 'none';
         stopAudioBtn.style.display = 'inline-flex';
-        audioStatus.textContent = '🎤 Live streaming...';
+        audioStatus.textContent = '🔊 Streaming system audio...';
         audioStatus.style.color = '#e53e3e';
         
         // Start audio level visualization
@@ -438,11 +454,30 @@ async function startAudioStreaming() {
         // Notify other clients
         socket.emit('startLiveStream');
         
-        showNotification('Live audio streaming started!', 'success');
+        showNotification('System audio streaming started! Play any video/music and it will be shared.', 'success');
+        
+        // Handle stream end (when user stops screen sharing)
+        mediaStream.getVideoTracks().forEach(track => {
+            track.onended = () => {
+                stopAudioStreaming();
+            };
+        });
+        
+        audioOnlyStream.getAudioTracks().forEach(track => {
+            track.onended = () => {
+                stopAudioStreaming();
+            };
+        });
         
     } catch (error) {
-        console.error('Error starting audio stream:', error);
-        showNotification('Failed to start audio stream. Please allow microphone access.', 'error');
+        console.error('Error starting system audio stream:', error);
+        if (error.name === 'NotAllowedError') {
+            showNotification('Screen sharing was denied. Please allow screen sharing to capture system audio.', 'error');
+        } else if (error.message.includes('No audio track')) {
+            showNotification('No audio track found. Make sure to check "Share audio" when selecting screen/window.', 'error');
+        } else {
+            showNotification('Failed to start system audio stream: ' + error.message, 'error');
+        }
     }
 }
 
@@ -460,7 +495,7 @@ function stopAudioStreaming() {
     isStreaming = false;
     startAudioBtn.style.display = 'inline-flex';
     stopAudioBtn.style.display = 'none';
-    audioStatus.textContent = '🔇 Audio streaming off';
+    audioStatus.textContent = '🔇 System audio not shared';
     audioStatus.style.color = '#718096';
     audioLevelBar.style.width = '0%';
     
@@ -469,7 +504,7 @@ function stopAudioStreaming() {
         socket.emit('stopLiveStream');
     }
     
-    showNotification('Live audio streaming stopped', 'info');
+    showNotification('System audio streaming stopped', 'info');
 }
 
 function visualizeAudioLevel() {

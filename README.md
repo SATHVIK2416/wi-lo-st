@@ -6,7 +6,7 @@ A comprehensive web application that allows you to upload video files from your 
 
 - 📁 **File Upload**: Drag and drop or click to select video files from your computer
 - 🎬 **Video Streaming**: Stream videos with adaptive quality and seek support  
-- 🎤 **Live Audio Streaming**: Stream your laptop's audio live to all connected devices
+- 🎤 **System Audio Streaming**: Stream your laptop's system audio (videos, music, etc.) live to all connected devices
 - 🌐 **Network Sharing**: Share videos and audio with anyone on your local WiFi network
 - 📱 **Responsive Design**: Works on desktop, tablet, and mobile devices
 - 🎯 **Extended Format Support**: MP4, AVI, MOV, **MKV**, WebM, M4V, FLV, WMV
@@ -22,7 +22,7 @@ A comprehensive web application that allows you to upload video files from your 
 - Node.js (version 14 or higher)
 - NPM (comes with Node.js)
 - Modern web browser with WebRTC support
-- Microphone access (for live audio streaming)
+- Screen sharing permissions (for system audio capture)
 
 ### Installation
 
@@ -56,12 +56,14 @@ Run `npm start` and note the network URLs displayed in the console. These URLs c
 
 Supported formats: MP4, AVI, MOV, **MKV**, WebM, M4V, FLV, WMV
 
-### 3. Live Audio Streaming
-- Click "🎙️ Start Live Audio" to begin streaming your laptop's audio
-- Allow microphone access when prompted
-- Your audio will be streamed live to all connected devices
+### 3. System Audio Streaming
+- Click "🔊 Share System Audio" to begin streaming your laptop's system audio
+- Select "Share your entire screen" or "Share a window" when prompted
+- **Important**: Make sure "Share audio" checkbox is checked in the screen share dialog
+- Play any video, music, or audio on your laptop
+- The audio will be streamed live to all connected devices
 - Watch the audio level visualization to see streaming activity
-- Click "⏹️ Stop Live Audio" to end the stream
+- Click "⏹️ Stop Sharing" to end the stream
 
 ### 4. Playing Videos
 - Once uploaded, the video will appear in the "Current Video" section
@@ -157,10 +159,11 @@ The app supports common video formats including:
 - WMV
 
 ### Live Audio Features
+- **System Audio Capture**: Captures whatever audio is playing on your laptop
 - **Real-time Streaming**: Audio streams with minimal delay
 - **Audio Level Visualization**: See live audio activity
 - **Multi-device Support**: Stream to unlimited connected devices
-- **Echo Cancellation**: Built-in audio processing for better quality
+- **Screen Share Integration**: Uses modern screen capture API for high-quality audio
 
 ## 🚨 Security Notes
 
@@ -176,10 +179,11 @@ The app supports common video formats including:
 - Check if the file was uploaded successfully
 - Try refreshing the page
 
-### Live Audio Not Working
-- Ensure microphone access is granted
-- Check if browser supports WebRTC
-- Verify other devices are connected to the same network
+### System Audio Not Working
+- Ensure screen sharing permission is granted
+- Make sure "Share audio" is checked when selecting screen/window to share
+- Verify your system has audio playing (test with system volume)
+- Check if browser supports getDisplayMedia API
 - Try refreshing all connected devices
 
 ### Can't Access from Other Devices
@@ -201,12 +205,12 @@ If you encounter issues:
 
 ## 🎯 Use Cases
 
-- **Home Entertainment**: Share movies with family members + live commentary
-- **Presentations**: Stream videos during meetings with live audio narration
-- **Education**: Share educational content in classrooms with teacher audio
-- **Events**: Display videos at parties with live DJ commentary
-- **Gaming**: Stream gameplay with live voice commentary
-- **Music Sessions**: Share music videos with live audio mixing
+- **Home Entertainment**: Share movies with family members + stream the movie audio to their devices
+- **Presentations**: Stream videos during meetings with synchronized audio to all participants
+- **Education**: Share educational content in classrooms with audio streaming to student devices
+- **Events**: Display videos at parties with audio streaming to multiple speakers/devices
+- **Gaming**: Stream gameplay with game audio to connected devices
+- **Music Sessions**: Share music with synchronized audio streaming
 - **Development**: Test video and audio streaming functionality
 
 ## 🔄 Updates
