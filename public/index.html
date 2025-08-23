@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Stream WebApp</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎥 Video Stream WebApp</h1>
+            <p>Upload and stream videos over your local network</p>
+        </header>
+
+        <div class="network-info" id="networkInfo">
+            <h3>📡 Network Information</h3>
+            <div id="networkAddresses"></div>
+        </div>
+
+        <div class="upload-section">
+            <h2>📁 Upload Video</h2>
+            <div class="upload-area" id="uploadArea">
+                <input type="file" id="fileInput" accept="video/*" style="display: none;">
+                <div class="upload-content">
+                    <div class="upload-icon">📹</div>
+                    <p>Click to select a video file or drag and drop</p>
+                    <small>Supported formats: MP4, AVI, MOV, MKV, WebM, M4V</small>
+                </div>
+            </div>
+            <div class="upload-progress" id="uploadProgress" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <span id="progressText">0%</span>
+            </div>
+        </div>
+
+        <div class="video-section">
+            <h2>🎬 Current Video</h2>
+            <div id="currentVideoInfo" class="video-info">
+                <p>No video loaded</p>
+            </div>
+            <video id="videoPlayer" controls style="display: none;" width="100%" height="400">
+                Your browser does not support the video tag.
+            </video>
+        </div>
+
+        <div class="video-list-section">
+            <h2>📚 Available Videos</h2>
+            <div id="videoList" class="video-list">
+                <!-- Video list will be populated here -->
+            </div>
+            <button id="refreshList" class="btn btn-secondary">🔄 Refresh List</button>
+        </div>
+
+        <div class="share-section">
+            <h2>📤 Share Video</h2>
+            <p>Share this URL with others on your network to let them watch the video:</p>
+            <div class="share-url" id="shareUrl">
+                <input type="text" id="shareUrlInput" readonly>
+                <button id="copyUrl" class="btn btn-primary">📋 Copy</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="notification" class="notification"></div>
+
+    <script src="script.js"></script>
+</body>
+</html>
