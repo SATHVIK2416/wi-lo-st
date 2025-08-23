@@ -50,6 +50,11 @@ io.on('connection', socket => {
     if (targetId) io.to(targetId).emit('webrtc-ice-candidate', { candidate, from: socket.id });
   });
 
+  // Listener periodically reports quality stats -> forward to host
+  socket.on('listener-stats', payload => {
+    if (hostSocketId) io.to(hostSocketId).emit('listener-stats', { viewerId: socket.id, ...payload });
+  });
+
   socket.on('disconnect-viewer', ({ viewerId }) => {
     if (viewers.has(viewerId)) io.to(viewerId).emit('disconnect-request');
   });

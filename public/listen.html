@@ -64,7 +64,33 @@
             function toggleMute(){ muted=!muted; if(audioEl) audioEl.muted=muted; muteBtn.textContent = muted ? '🔊 Unmute' : '🔇 Mute'; }
             function teardown(){ if(pc){ pc.close(); pc=null; } if(audioEl){ audioEl.srcObject=null; audioEl.remove(); audioEl=null; } bars.forEach(b=>b.style.height='20%'); enableBtn.style.display='inline-block'; muteBtn.style.display='none'; }
             function animate(){ const step = () => { if(!pc || !audioEl || audioEl.paused) return; bars.forEach(b => { b.style.height = (Math.random()*80+20)+'%'; }); requestAnimationFrame(step); }; requestAnimationFrame(step); updateStatsLoop(); }
-            async function updateStatsLoop(){ if(!pc) return; try { const stats = await pc.getStats(); let jitterMs='-', rttMs='-'; stats.forEach(r => { if(r.type==='remote-inbound-rtp' && r.kind==='audio' && r.jitter) jitterMs=(r.jitter*1000).toFixed(1); if(r.type==='candidate-pair' && r.currentRoundTripTime !== undefined && r.nominated) rttMs=(r.currentRoundTripTime*1000).toFixed(0); }); qualityStats.textContent = `⏱️ rtt ${rttMs}ms • jitter ${jitterMs}ms`; } catch(_){} setTimeout(updateStatsLoop,1000); }
+                    async function updateStatsLoop(){
+                        if(!pc) return;
+                        try {
+                            const stats = await pc.getStats();
+                            let jitterMs='-', rttMs='-', bitrateKbps='-', packetsLost=0, packetsRecv=0, fractionLoss='-';
+                            let inboundRtp; let prevBytes = updateStatsLoop._prevBytes || 0; let prevTime = updateStatsLoop._prevTime || performance.now();
+                            let now = performance.now();
+                            stats.forEach(r => {
+                                if(r.type==='remote-inbound-rtp' && r.kind==='audio') { if(r.jitter) jitterMs=(r.jitter*1000).toFixed(1); if(r.packetsLost!=null) packetsLost=r.packetsLost; }
+                                if(r.type==='inbound-rtp' && r.kind==='audio') { inboundRtp = r; if(r.packetsReceived!=null) packetsRecv = r.packetsReceived; }
+                                if(r.type==='candidate-pair' && r.currentRoundTripTime !== undefined && r.nominated) rttMs=(r.currentRoundTripTime*1000).toFixed(0);
+                            });
+                            if(inboundRtp && inboundRtp.bytesReceived!=null){
+                                const bytes = inboundRtp.bytesReceived;
+                                const deltaBytes = bytes - prevBytes;
+                                const deltaTime = now - prevTime; // ms
+                                if(deltaTime > 0) bitrateKbps = ((deltaBytes * 8) / deltaTime).toFixed(1); // kbps (since ms denominator -> *1000 cancels, we leave as per ms*8 then /1000 implicit) but approximate
+                                updateStatsLoop._prevBytes = bytes;
+                                updateStatsLoop._prevTime = now;
+                            }
+                            if(packetsRecv>0) fractionLoss = ((packetsLost / (packetsLost + packetsRecv))*100).toFixed(1)+'%';
+                            qualityStats.textContent = `⏱️ rtt ${rttMs}ms • jitter ${jitterMs}ms • bitrate ${bitrateKbps}kbps • loss ${fractionLoss}`;
+                            // Emit to host every second
+                            socket.emit('listener-stats', { rttMs, jitterMs, bitrateKbps, fractionLoss, packetsLost, packetsRecv });
+                        } catch(_){}
+                        setTimeout(updateStatsLoop,1000);
+                    }
             function flash(msg,type='success'){ note.textContent=msg; note.className=`notification ${type} show`; setTimeout(()=>note.classList.remove('show'),2500); }
         </script>
     </body>

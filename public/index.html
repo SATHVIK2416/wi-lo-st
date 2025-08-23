@@ -82,6 +82,7 @@
                 <div class="panel-dark" style="padding:14px;margin-top:18px;border-radius:10px;border:1px solid #1f1f1f;">
                     <div class="section-title">👥 Connected Viewers (<span id="viewerCountInline">0</span>)</div>
                     <div id="viewerList" class="viewer-list"></div>
+                  <div id="qualityPanel" style="margin-top:14px;font-family:ui-monospace,monospace;font-size:11px;line-height:1.35;color:#9aa0b5;white-space:pre-wrap;background:#101010;border:1px solid #1c1c1c;padding:10px;border-radius:8px;display:none"></div>
                 </div>
                 <div class="share-options">
                     <div class="share-option">
@@ -106,13 +107,14 @@
 
         <div id="notification" class="notification"></div>
         <script src="script.js"></script>
-        <script>
+            <script>
             document.body.classList.add('oled');
             (function waitForSocket(){
                 if(window.socket){
                     socket.on('stats', ({ viewerIds, viewerCount }) => {
                         const listEl = document.getElementById('viewerList');
                         const countInline = document.getElementById('viewerCountInline');
+                            const qp = document.getElementById('qualityPanel');
                         if(!listEl) return;
                         listEl.innerHTML = '';
                         (viewerIds||[]).forEach(id => {
@@ -122,7 +124,21 @@
                             listEl.appendChild(chip);
                         });
                         if(countInline) countInline.textContent = viewerCount || (viewerIds ? viewerIds.length : 0);
+                            if(viewerIds && viewerIds.length){ qp.style.display='block'; } else { qp.style.display='none'; qp.textContent=''; }
                     });
+                        const latestStats = {}; // viewerId -> stat object
+                        socket.on('listener-stats', ({ viewerId, rttMs, jitterMs, bitrateKbps, fractionLoss }) => {
+                            latestStats[viewerId] = { rttMs, jitterMs, bitrateKbps, fractionLoss, t: Date.now() };
+                            renderQuality();
+                        });
+                        function renderQuality(){
+                            const qp = document.getElementById('qualityPanel');
+                            if(!qp) return;
+                            const lines = Object.entries(latestStats)
+                                .sort((a,b)=>a[0].localeCompare(b[0]))
+                                .map(([id,s])=>`${id}\n  rtt ${s.rttMs}ms | jitter ${s.jitterMs}ms | bitrate ${s.bitrateKbps}kbps | loss ${s.fractionLoss}`);
+                            qp.textContent = lines.join('\n\n');
+                        }
                 } else {
                     setTimeout(waitForSocket, 100);
                 }
