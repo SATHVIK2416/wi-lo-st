@@ -26,7 +26,7 @@
     const peers = new Map();
     const senderRegistry = new Map();
     const pendingViewers = new Set();
-    let desiredLatencyMs = 200; let desiredBitrateKbps = 192;
+    let desiredLatencyMs = 150; let desiredBitrateKbps = 256;
 
     document.addEventListener('DOMContentLoaded', () => { initSocket(); loadNetworkInfo(); bindUI(); });
 
@@ -68,7 +68,7 @@
 
     async function startAudio(){
         try {
-            mediaStream = await navigator.mediaDevices.getDisplayMedia({ video:{ frameRate:{ ideal:5,max:10 }, width:{ ideal:640 }, height:{ ideal:360 } }, audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false, suppressLocalAudioPlayback:false } });
+            mediaStream = await navigator.mediaDevices.getDisplayMedia({ video:{ frameRate:{ ideal:5,max:10 }, width:{ ideal:640 }, height:{ ideal:360 } }, audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false, suppressLocalAudioPlayback:false, sampleRate:{ ideal:48000 }, sampleSize:{ ideal:16 }, channelCount:{ ideal:2 } } });
             const audioTracks = mediaStream.getAudioTracks();
             if(!audioTracks.length) throw new Error('No audio track available. Ensure "Share audio" is checked.');
             const audioOnlyStream = new MediaStream([audioTracks[0]]);
@@ -98,7 +98,7 @@
 
     async function createPeer(viewerId){ if(!audioTrack) return; const pc = new RTCPeerConnection({ iceServers:[{ urls:'stun:stun.l.google.com:19302' }]}); peers.set(viewerId, pc); pc.onicecandidate = e=>{ if(e.candidate) socket.emit('webrtc-ice-candidate',{ targetId:viewerId, candidate:e.candidate }); }; pc.onconnectionstatechange=()=>{ if(['failed','disconnected','closed'].includes(pc.connectionState)){ pc.close(); peers.delete(viewerId); if(audioTrack && pc.connectionState==='failed'){ setTimeout(()=>{ if(audioTrack && !peers.has(viewerId)) createPeer(viewerId); },1000); } } }; pc.oniceconnectionstatechange=()=>{}; const outboundStream = new MediaStream([audioTrack]); const sender = pc.addTrack(audioTrack, outboundStream); senderRegistry.set(viewerId, sender); try{ if(RTCRtpSender.getCapabilities){ const caps=RTCRtpSender.getCapabilities('audio'); if(caps&&caps.codecs){ const opus=caps.codecs.filter(c=>/opus/i.test(c.mimeType)); const others=caps.codecs.filter(c=>!/opus/i.test(c.mimeType)); const ordered=[...opus,...others]; const tx=pc.getTransceivers().find(t=>t.sender===sender); if(tx&&tx.setCodecPreferences) tx.setCodecPreferences(ordered); } } }catch(_){} tuneSender(sender); const tx=pc.getTransceivers().find(t=>t.sender&&t.sender.track===audioTrack); if(tx){ try{ tx.direction='sendonly'; }catch(_){} } const offer=await pc.createOffer(); await pc.setLocalDescription(offer); socket.emit('webrtc-offer',{ viewerId, sdp:offer }); }
 
-    function tuneSender(sender){ if(!sender) return; try{ const params=sender.getParameters(); if(!params.encodings) params.encodings=[{}]; const enc=params.encodings[0]; enc.maxBitrate=Math.round(desiredBitrateKbps*1000); const target=desiredLatencyMs; let ptime=20; if(target<=140) ptime=10; else if(target>=300) ptime=40; enc.ptime=ptime; enc.dtx=false; sender.setParameters(params).catch(()=>{}); tuneStatus && (tuneStatus.textContent=`Target: ${desiredLatencyMs}ms / ${desiredBitrateKbps}kbps (ptime ${ptime}ms)`);}catch(e){}}
-    function applyTuningToAll(){ if(latencyInput) desiredLatencyMs=Math.max(80,Math.min(800,parseInt(latencyInput.value)||200)); if(bitrateInput) desiredBitrateKbps=Math.max(64,Math.min(320,parseInt(bitrateInput.value)||192)); senderRegistry.forEach(s=>tuneSender(s)); notify('Applied new tuning','info'); }
+    function tuneSender(sender){ if(!sender) return; try{ const params=sender.getParameters(); if(!params.encodings) params.encodings=[{}]; const enc=params.encodings[0]; enc.maxBitrate=Math.round(desiredBitrateKbps*1000); enc.minBitrate=Math.round(desiredBitrateKbps*1000*0.8); enc.networkPriority='high'; enc.priority='high'; const target=desiredLatencyMs; let ptime=20; if(target<=140) ptime=10; else if(target>=300) ptime=40; enc.ptime=ptime; enc.dtx=false; sender.setParameters(params).catch(()=>{}); tuneStatus && (tuneStatus.textContent=`Target: ${desiredLatencyMs}ms / ${desiredBitrateKbps}kbps (ptime ${ptime}ms)`);}catch(e){}}
+    function applyTuningToAll(){ if(latencyInput) desiredLatencyMs=Math.max(80,Math.min(800,parseInt(latencyInput.value)||150)); if(bitrateInput) desiredBitrateKbps=Math.max(64,Math.min(512,parseInt(bitrateInput.value)||256)); senderRegistry.forEach(s=>tuneSender(s)); notify('Applied new tuning','info'); }
 
 })();

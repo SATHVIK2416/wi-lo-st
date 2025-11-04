@@ -7,20 +7,32 @@ const os = require('os');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: '*' } });
+const io = new Server(server, { 
+  cors: { origin: '*' },
+  pingTimeout: 60000,
+  pingInterval: 25000
+});
 const PORT = process.env.PORT || 3000;
 
+// Middleware
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.json());
 
-let hostSocketId = null;              // current broadcaster socket id
-const viewers = new Map();            // viewerId -> { createdAt }
+// State management
+let hostSocketId = null;
+const viewers = new Map(); // viewerId -> { createdAt, nickname }
+const viewerStats = new Map(); // viewerId -> latest stats
 
+// Socket.IO connection handler
 io.on('connection', socket => {
-  console.log('🔌 connect', socket.id);
+  console.log('🔌 Connection established:', socket.id);
 
   socket.on('register-host', () => {
+    if (hostSocketId && hostSocketId !== socket.id) {
+      console.log('⚠️  Host already exists, replacing:', hostSocketId);
+    }
     hostSocketId = socket.id;
-    console.log('🎙️ host', socket.id);
+    console.log('🎙️  Host registered:', socket.id);
     socket.emit('host-confirmed');
     broadcastStats();
   });
@@ -52,7 +64,10 @@ io.on('connection', socket => {
 
   // Listener periodically reports quality stats -> forward to host
   socket.on('listener-stats', payload => {
-    if (hostSocketId) io.to(hostSocketId).emit('listener-stats', { viewerId: socket.id, ...payload });
+    if (hostSocketId) {
+      viewerStats.set(socket.id, { ...payload, timestamp: Date.now() });
+      io.to(hostSocketId).emit('listener-stats', { viewerId: socket.id, ...payload });
+    }
   });
 
   socket.on('disconnect-viewer', ({ viewerId }) => {
@@ -61,16 +76,19 @@ io.on('connection', socket => {
 
   socket.on('disconnect', () => {
     if (socket.id === hostSocketId) {
+      console.log('❌ Host disconnected');
       hostSocketId = null;
       viewers.forEach((_, vid) => io.to(vid).emit('host-left'));
       viewers.clear();
+      viewerStats.clear();
       broadcastStats();
     } else if (viewers.has(socket.id)) {
+      console.log('👋 Viewer disconnected:', socket.id);
       viewers.delete(socket.id);
+      viewerStats.delete(socket.id);
       if (hostSocketId) io.to(hostSocketId).emit('viewer-left', { viewerId: socket.id });
       broadcastStats();
     }
-    console.log('🔌 disconnect', socket.id);
   });
 });
 
@@ -96,22 +114,56 @@ app.get('/network-info', (_req, res) => {
 });
 
 app.get('/stats', (_req, res) => {
-  res.json({ viewerCount: viewers.size, hostPresent: !!hostSocketId });
+  res.json({ 
+    viewerCount: viewers.size, 
+    hostPresent: !!hostSocketId,
+    uptime: process.uptime()
+  });
+});
+
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/listen', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'listen.html')));
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n🔊 Live Audio Share (WebRTC) :${PORT}`);
-  console.log(`📱 Local  http://localhost:${PORT}`);
+  console.log('\n═══════════════════════════════════════════════');
+  console.log('🔊  Live Audio Share (WebRTC)');
+  console.log('═══════════════════════════════════════════════');
+  console.log(`\n📱 Local Access:\n   http://localhost:${PORT}`);
+  
   const interfaces = os.networkInterfaces();
+  const networkAddrs = [];
   for (const name in interfaces) {
     for (const net of interfaces[name]) {
-      if (net.family === 'IPv4' && !net.internal) console.log(`🌐 ${name}  http://${net.address}:${PORT}`);
+      if (net.family === 'IPv4' && !net.internal) {
+        networkAddrs.push({ name, url: `http://${net.address}:${PORT}` });
+      }
     }
   }
-  console.log('\nHost: /  |  Listener: /listen');
+  
+  if (networkAddrs.length > 0) {
+    console.log('\n🌐 Network Access:');
+    networkAddrs.forEach(({ name, url }) => console.log(`   ${name}: ${url}`));
+  }
+  
+  console.log('\n📋 Endpoints:');
+  console.log('   Host Control: /');
+  console.log('   Listener:     /listen');
+  console.log('   Stats:        /stats');
+  console.log('   Health:       /health');
+  console.log('\n═══════════════════════════════════════════════\n');
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, closing server...');
+  server.close(() => {
+    console.log('Server closed');
+    process.exit(0);
+  });
 });
 
 module.exports = { app, server };
