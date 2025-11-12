@@ -68,19 +68,110 @@
 
     async function startAudio(){
         try {
-            mediaStream = await navigator.mediaDevices.getDisplayMedia({ video:{ frameRate:{ ideal:5,max:10 }, width:{ ideal:640 }, height:{ ideal:360 } }, audio:{ echoCancellation:false, noiseSuppression:false, autoGainControl:false, suppressLocalAudioPlayback:false, sampleRate:{ ideal:48000 }, sampleSize:{ ideal:16 }, channelCount:{ ideal:2 } } });
+            mediaStream = await navigator.mediaDevices.getDisplayMedia({ 
+                video:{ frameRate:{ ideal:5,max:10 }, width:{ ideal:640 }, height:{ ideal:360 } }, 
+                audio:{ 
+                    echoCancellation:false, 
+                    noiseSuppression:false, 
+                    autoGainControl:false, 
+                    suppressLocalAudioPlayback:false, 
+                    sampleRate:{ ideal:48000 }, 
+                    sampleSize:{ ideal:16 }, 
+                    channelCount:{ ideal:2 } 
+                } 
+            });
+            
             const audioTracks = mediaStream.getAudioTracks();
             if(!audioTracks.length) throw new Error('No audio track available. Ensure "Share audio" is checked.');
-            const audioOnlyStream = new MediaStream([audioTracks[0]]);
-            audioContext = new (window.AudioContext||window.webkitAudioContext)();
-            const src = audioContext.createMediaStreamSource(audioOnlyStream); analyser = audioContext.createAnalyser(); analyser.fftSize=256; src.connect(analyser);
-            audioTrack = audioOnlyStream.getAudioTracks()[0];
-            try { mediaStream.getVideoTracks().forEach(v=>v.applyConstraints({ frameRate:{ max:5 }, width:{ ideal:320 }, height:{ ideal:180 } })); } catch(_){ }
-            if(pendingViewers.size){ for(const id of pendingViewers) await createPeer(id); pendingViewers.clear(); }
-            isStreaming=true; startAudioBtn.style.display='none'; stopAudioBtn.style.display='inline-flex'; audioStatus.textContent='🔊 Streaming system audio...'; audioStatus.style.color='#e53e3e';
-            visualizeLevel(); notify('System audio streaming started (WebRTC)','success'); socket.emit('announce-streaming');
+            
+            // Create audio context with high quality settings
+            audioContext = new (window.AudioContext||window.webkitAudioContext)({ 
+                latencyHint: 'playback',
+                sampleRate: 48000 
+            });
+            
+            // Source from captured audio
+            const originalStream = new MediaStream([audioTracks[0]]);
+            const source = audioContext.createMediaStreamSource(originalStream);
+            
+            // Create multi-band EQ for enhanced bass and treble
+            // Low shelf - boost bass (20-250 Hz)
+            const bassBoost = audioContext.createBiquadFilter();
+            bassBoost.type = 'lowshelf';
+            bassBoost.frequency.value = 200;
+            bassBoost.gain.value = 8; // +8dB bass boost
+            
+            // High shelf - boost treble (8kHz-20kHz)
+            const trebleBoost = audioContext.createBiquadFilter();
+            trebleBoost.type = 'highshelf';
+            trebleBoost.frequency.value = 8000;
+            trebleBoost.gain.value = 6; // +6dB treble boost
+            
+            // Mid presence boost (2-4kHz) for clarity
+            const presenceBoost = audioContext.createBiquadFilter();
+            presenceBoost.type = 'peaking';
+            presenceBoost.frequency.value = 3000;
+            presenceBoost.Q.value = 1.5;
+            presenceBoost.gain.value = 4; // +4dB presence
+            
+            // Compressor to maintain dynamic range
+            const compressor = audioContext.createDynamicsCompressor();
+            compressor.threshold.value = -20;
+            compressor.knee.value = 10;
+            compressor.ratio.value = 4;
+            compressor.attack.value = 0.003;
+            compressor.release.value = 0.25;
+            
+            // Gain node for overall level control
+            const gainNode = audioContext.createGain();
+            gainNode.gain.value = 1.2; // Slight overall boost
+            
+            // Connect audio processing chain
+            source.connect(bassBoost);
+            bassBoost.connect(presenceBoost);
+            presenceBoost.connect(trebleBoost);
+            trebleBoost.connect(compressor);
+            compressor.connect(gainNode);
+            
+            // Create destination for streaming
+            const destination = audioContext.createMediaStreamDestination();
+            gainNode.connect(destination);
+            
+            // Also connect to analyser for visualization
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 512;
+            gainNode.connect(analyser);
+            
+            // Use the processed audio track for WebRTC
+            audioTrack = destination.stream.getAudioTracks()[0];
+            
+            console.log('Audio processing chain active: Bass +8dB, Treble +6dB, Presence +4dB');
+            
+            try { 
+                mediaStream.getVideoTracks().forEach(v=>v.applyConstraints({ 
+                    frameRate:{ max:5 }, 
+                    width:{ ideal:320 }, 
+                    height:{ ideal:180 } 
+                })); 
+            } catch(_){ }
+            
+            if(pendingViewers.size){ 
+                for(const id of pendingViewers) await createPeer(id); 
+                pendingViewers.clear(); 
+            }
+            
+            isStreaming=true; 
+            startAudioBtn.style.display='none'; 
+            stopAudioBtn.style.display='inline-flex'; 
+            audioStatus.textContent='🔊 Streaming with EQ enhancement...'; 
+            audioStatus.style.color='#e53e3e';
+            
+            visualizeLevel(); 
+            notify('High-fidelity audio streaming active','success'); 
+            socket.emit('announce-streaming');
+            
             mediaStream.getVideoTracks().forEach(t=> t.onended = () => stopAudio());
-            audioOnlyStream.getAudioTracks().forEach(t=> t.onended = () => stopAudio());
+            originalStream.getAudioTracks().forEach(t=> t.onended = () => stopAudio());
         } catch(e){
             const msg = e?.name==='NotAllowedError' ? 'Screen sharing denied.' : (e.message.includes('No audio track') ? 'No audio track – check the Share audio box.' : 'Failed to start: '+e.message);
             notify(msg,'error');
