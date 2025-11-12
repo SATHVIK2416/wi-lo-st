@@ -15,13 +15,57 @@ const io = new Server(server, {
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
+
+// Session management for access control
+const sessions = new Map(); // sessionId -> { role: 'host' | 'listener', createdAt }
+
+// Middleware to protect host control page
+const requireHostAccess = (req, res, next) => {
+  const sessionId = req.query.session || req.headers['x-session-id'];
+  
+  // Check if request is coming from same machine (localhost)
+  const isLocalhost = req.ip === '127.0.0.1' || 
+                      req.ip === '::1' || 
+                      req.ip === '::ffff:127.0.0.1' ||
+                      req.hostname === 'localhost';
+  
+  // Allow access from localhost or with valid host session
+  if (isLocalhost) {
+    return next();
+  }
+  
+  if (sessionId && sessions.has(sessionId)) {
+    const session = sessions.get(sessionId);
+    if (session.role === 'host') {
+      return next();
+    }
+  }
+  
+  // Redirect to listener page for unauthorized access
+  return res.redirect('/listen');
+};
+
+// Static files (excluding index.html which needs protection)
+app.use(express.static(path.join(__dirname, 'public'), {
+  index: false // Don't serve index.html automatically
+}));
 
 // State management
 let hostSocketId = null;
 const viewers = new Map(); // viewerId -> { createdAt, nickname }
 const viewerStats = new Map(); // viewerId -> latest stats
+
+// Clean up expired sessions every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+  for (const [id, session] of sessions.entries()) {
+    if (now - session.createdAt > maxAge) {
+      sessions.delete(id);
+    }
+  }
+}, 5 * 60 * 1000);
 
 // Socket.IO connection handler
 io.on('connection', socket => {
@@ -41,6 +85,13 @@ io.on('connection', socket => {
     if (socket.id !== hostSocketId) return;
     viewers.forEach((_, vid) => io.to(hostSocketId).emit('viewer-joined', { viewerId: vid }));
     io.emit('host-streaming');
+  });
+
+  socket.on('host-stopped-streaming', () => {
+    if (socket.id !== hostSocketId) return;
+    console.log('⏹️  Host stopped streaming');
+    // Notify all viewers that streaming has stopped
+    viewers.forEach((_, vid) => io.to(vid).emit('host-stopped'));
   });
 
   socket.on('viewer-join', () => {
@@ -125,7 +176,10 @@ app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+// Protected host control page - only accessible from localhost or with valid session
+app.get('/', requireHostAccess, (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+
+// Public listener page - accessible to everyone
 app.get('/listen', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'listen.html')));
 
 server.listen(PORT, '0.0.0.0', () => {

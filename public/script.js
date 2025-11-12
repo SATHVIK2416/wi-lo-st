@@ -91,7 +91,9 @@
         if(mediaStream){ mediaStream.getTracks().forEach(t=>{ try{ t.stop(); }catch(_){} }); mediaStream=null; }
         if(audioContext){ audioContext.close(); audioContext=null; }
         isStreaming=false; startAudioBtn.style.display='inline-flex'; stopAudioBtn.style.display='none'; audioStatus.textContent='🔇 System audio not shared'; audioStatus.style.color='#718096'; audioLevelBar.style.width='0%';
-        peers.forEach(pc=>pc.close()); peers.clear(); audioTrack=null; pendingViewers.clear(); senderRegistry.clear(); notify('System audio streaming stopped','info');
+        peers.forEach(pc=>pc.close()); peers.clear(); audioTrack=null; pendingViewers.clear(); senderRegistry.clear(); 
+        socket.emit('host-stopped-streaming'); // Notify server that streaming stopped
+        notify('System audio streaming stopped','info');
     }
 
     function visualizeLevel(){ if(!analyser||!isStreaming) return; const len=analyser.frequencyBinCount; const data=new Uint8Array(len); (function loop(){ if(!isStreaming) return; analyser.getByteFrequencyData(data); const avg=data.reduce((s,v)=>s+v,0)/len; audioLevelBar.style.width=((avg/255)*100)+'%'; requestAnimationFrame(loop); })(); }
