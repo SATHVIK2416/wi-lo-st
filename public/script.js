@@ -13,6 +13,7 @@
     const stopAudioBtn = $('stopAudioStream');
     const audioStatus = $('audioStatus');
     const audioLevelBar = $('audioLevelBar');
+    const audioVisualizer = document.querySelector('.audio-visualizer');
     const connectionStatus = $('connectionStatus');
     const clientsCount = $('clientsCount');
     const notificationEl = $('notification');
@@ -28,7 +29,14 @@
     const pendingViewers = new Set();
     let desiredLatencyMs = 150; let desiredBitrateKbps = 510; // Max Opus bitrate for music quality
 
-    document.addEventListener('DOMContentLoaded', () => { initSocket(); loadNetworkInfo(); bindUI(); });
+    const setAudioStatus = (message, variant = 'neutral') => {
+        if (!audioStatus) return;
+        audioStatus.textContent = message;
+        audioStatus.classList.remove('pill--neutral', 'pill--accent');
+        audioStatus.classList.add(variant === 'accent' ? 'pill--accent' : 'pill--neutral');
+    };
+
+    document.addEventListener('DOMContentLoaded', () => { initSocket(); loadNetworkInfo(); bindUI(); setAudioStatus('Not streaming', 'neutral'); });
 
     function bindUI(){
         copyUrlBtn && copyUrlBtn.addEventListener('click', () => copyField(shareUrlInput,'Control page URL copied'));
@@ -163,8 +171,8 @@
             isStreaming=true; 
             startAudioBtn.style.display='none'; 
             stopAudioBtn.style.display='inline-flex'; 
-            audioStatus.textContent='🔊 Streaming with EQ enhancement...'; 
-            audioStatus.style.color='#e53e3e';
+            setAudioStatus('🔊 Streaming with EQ enhancement...', 'accent');
+            audioVisualizer && audioVisualizer.classList.add('is-active');
             
             visualizeLevel(); 
             notify('High-fidelity audio streaming active','success'); 
@@ -174,6 +182,7 @@
             originalStream.getAudioTracks().forEach(t=> t.onended = () => stopAudio());
         } catch(e){
             const msg = e?.name==='NotAllowedError' ? 'Screen sharing denied.' : (e.message.includes('No audio track') ? 'No audio track – check the Share audio box.' : 'Failed to start: '+e.message);
+            audioVisualizer && audioVisualizer.classList.remove('is-active');
             notify(msg,'error');
         }
     }
@@ -181,7 +190,7 @@
     function stopAudio(){
         if(mediaStream){ mediaStream.getTracks().forEach(t=>{ try{ t.stop(); }catch(_){} }); mediaStream=null; }
         if(audioContext){ audioContext.close(); audioContext=null; }
-        isStreaming=false; startAudioBtn.style.display='inline-flex'; stopAudioBtn.style.display='none'; audioStatus.textContent='🔇 System audio not shared'; audioStatus.style.color='#718096'; audioLevelBar.style.width='0%';
+        isStreaming=false; startAudioBtn.style.display='inline-flex'; stopAudioBtn.style.display='none'; setAudioStatus('🔇 System audio not shared', 'neutral'); audioLevelBar.style.width='0%'; audioVisualizer && audioVisualizer.classList.remove('is-active');
         peers.forEach(pc=>pc.close()); peers.clear(); audioTrack=null; pendingViewers.clear(); senderRegistry.clear(); 
         socket.emit('host-stopped-streaming'); // Notify server that streaming stopped
         notify('System audio streaming stopped','info');

@@ -3,118 +3,644 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Live Audio Share - Host Control</title>
+  <title>Live Audio Share · Host Console</title>
   <script src="/socket.io/socket.io.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     :root {
-      --bg-primary: #0a0a0a; --bg-secondary: #111; --bg-tertiary: #1a1a1a;
-      --border-primary: #2a2a2a; --border-secondary: #1f1f1f;
-      --accent: #6366f1; --accent-hover: #818cf8;
-      --text-primary: #f5f5f5; --text-secondary: #a3a3a3; --text-tertiary: #737373;
-      --success: #10b981; --danger: #ef4444;
-      --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+      --bg: #050505;
+      --gradient-1: rgba(99, 102, 241, 0.35);
+      --gradient-2: rgba(16, 185, 129, 0.25);
+      --surface: rgba(18, 18, 18, 0.85);
+      --surface-hover: rgba(24, 24, 24, 0.92);
+      --stroke: rgba(255, 255, 255, 0.08);
+      --stroke-muted: rgba(255, 255, 255, 0.04);
+      --accent: #6366f1;
+      --accent-soft: rgba(99, 102, 241, 0.12);
+      --accent-strong: #818cf8;
+      --success: #10b981;
+      --danger: #ef4444;
+      --text: #f9fafb;
+      --text-muted: rgba(248, 250, 252, 0.65);
+      --text-subtle: rgba(248, 250, 252, 0.42);
+      --shadow: 0 38px 120px -40px rgba(0, 0, 0, 0.75);
+      --rounded-lg: 22px;
+      --rounded-md: 16px;
+      --transition: 180ms ease;
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
     }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg-primary); color: var(--text-primary); line-height: 1.6; min-height: 100vh; padding: 20px; }
-    .container { max-width: 1200px; margin: 0 auto; }
-    header { text-align: center; padding: 40px 20px; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 16px; margin-bottom: 24px; box-shadow: var(--shadow); }
-    header h1 { font-size: 2.5rem; font-weight: 700; margin-bottom: 8px; background: linear-gradient(135deg, var(--accent), var(--accent-hover)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    header p { color: var(--text-secondary); font-size: 1.1rem; margin-bottom: 20px; }
-    .status-bar { display: flex; justify-content: center; gap: 24px; flex-wrap: wrap; margin-top: 20px; }
-    .status-item { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--bg-tertiary); border: 1px solid var(--border-secondary); border-radius: 20px; font-size: 0.9rem; transition: all 0.3s; }
-    .status-item:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
-    .card { background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 16px; padding: 24px; margin-bottom: 24px; box-shadow: var(--shadow); }
-    .card h2 { font-size: 1.5rem; margin-bottom: 16px; color: var(--text-primary); display: flex; align-items: center; gap: 10px; }
-    .btn { padding: 12px 24px; border: none; border-radius: 10px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.3s; display: inline-flex; align-items: center; gap: 8px; }
-    .btn-primary { background: var(--accent); color: white; }
-    .btn-primary:hover { background: var(--accent-hover); transform: translateY(-2px); box-shadow: var(--shadow); }
-    .btn-danger { background: var(--danger); color: white; }
-    .btn-danger:hover { background: #dc2626; transform: translateY(-2px); box-shadow: var(--shadow); }
-    .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-primary); }
-    .btn-secondary:hover { background: #252525; }
-    .controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 20px; }
-    .audio-visualizer { background: var(--bg-tertiary); border: 1px solid var(--border-secondary); border-radius: 10px; height: 60px; margin: 20px 0; position: relative; overflow: hidden; }
-    .audio-level-bar { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-hover), var(--success)); width: 0%; transition: width 0.1s ease; border-radius: 10px; }
-    .tuning-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin: 20px 0; padding: 20px; background: var(--bg-tertiary); border: 1px solid var(--border-secondary); border-radius: 10px; }
-    .input-group { display: flex; flex-direction: column; gap: 8px; }
-    .input-group label { font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); }
-    input[type="number"], input[type="text"] { padding: 10px 12px; background: var(--bg-primary); border: 1px solid var(--border-primary); border-radius: 8px; color: var(--text-primary); font-size: 1rem; transition: all 0.3s; font-family: 'Courier New', monospace; }
-    input[type="text"] { font-family: inherit; }
-    input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1); }
+    body {
+      background: radial-gradient(120% 120% at 50% -10%, var(--gradient-1), transparent 55%), radial-gradient(140% 140% at 100% 0%, var(--gradient-2), transparent 60%), var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 56px 24px 40px;
+      display: flex;
+      justify-content: center;
+      position: relative;
+      overflow-x: hidden;
+      line-height: 1.6;
+    }
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      width: 420px;
+      height: 420px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.22), transparent 70%);
+      filter: blur(60px);
+      opacity: 0.7;
+      z-index: -1;
+      animation: drift 18s ease-in-out infinite;
+      pointer-events: none;
+    }
+    body::after {
+      background: radial-gradient(circle, rgba(16, 185, 129, 0.2), transparent 70%);
+      width: 460px;
+      height: 460px;
+      right: -10%;
+      top: 55%;
+      animation-delay: -5s;
+    }
+    .container {
+      width: min(1120px, 100%);
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+    .page-header {
+      position: relative;
+      border-radius: var(--rounded-lg);
+      border: 1px solid var(--stroke);
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(24, 24, 24, 0.92));
+      backdrop-filter: blur(22px);
+      padding: 36px clamp(24px, 4vw, 48px);
+      box-shadow: var(--shadow);
+      display: grid;
+      gap: 28px;
+      animation: fadeUp 0.85s ease both;
+      animation-delay: var(--delay, 0s);
+      overflow: hidden;
+    }
+    .page-header::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: linear-gradient(120deg, rgba(99, 102, 241, 0.2) 0%, rgba(147, 197, 253, 0.1) 45%, transparent 92%);
+      opacity: 0;
+      transition: opacity var(--transition);
+      pointer-events: none;
+    }
+    .page-header:hover::after { opacity: 1; }
+    .eyebrow {
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.32em;
+      color: var(--text-subtle);
+      font-weight: 600;
+    }
+    .page-header h1 {
+      font-size: clamp(2.4rem, 5vw, 3.2rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .page-header p {
+      color: var(--text-muted);
+      max-width: 640px;
+      font-size: 1.05rem;
+      line-height: 1.7;
+    }
+    .status-bar {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    }
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-radius: 999px;
+      background: rgba(15, 15, 15, 0.62);
+      border: 1px solid var(--stroke-muted);
+      color: var(--text-muted);
+      transition: transform var(--transition), border-color var(--transition), background var(--transition), color var(--transition);
+      animation: fadeUp 0.85s ease both;
+    }
+    .status-item:hover {
+      transform: translateY(-3px);
+      border-color: rgba(99, 102, 241, 0.35);
+      background: rgba(24, 24, 24, 0.92);
+      color: var(--text);
+    }
+    .layout-grid {
+      display: grid;
+      gap: 28px;
+    }
+    @media (min-width: 960px) {
+      .layout-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .card--wide { grid-column: span 2; }
+    }
+    .card {
+      position: relative;
+      border-radius: var(--rounded-lg);
+      border: 1px solid var(--stroke);
+      background: var(--surface);
+      padding: clamp(24px, 3vw, 32px);
+      backdrop-filter: blur(18px);
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      transition: transform var(--transition), border-color var(--transition), background var(--transition);
+      animation: fadeUp 0.85s ease both;
+      animation-delay: var(--delay, 0s);
+    }
+    .card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(99, 102, 241, 0.35);
+      background: var(--surface-hover);
+    }
+    .card-head {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .card-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 1.4rem;
+    }
+    .card-head h2 {
+      font-size: 1.45rem;
+      letter-spacing: -0.01em;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .card-head h2 span {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--text-subtle);
+    }
+    .card-subtitle {
+      color: var(--text-subtle);
+      font-size: 0.94rem;
+      max-width: 520px;
+    }
+    .controls {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .controls .pill { margin-left: auto; }
+    .btn {
+      appearance: none;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      padding: 12px 22px;
+      font-size: 0.98rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition), background var(--transition);
+      backdrop-filter: blur(8px);
+    }
+    .btn-icon { font-size: 1.05rem; line-height: 1; }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+      color: var(--text);
+      box-shadow: 0 20px 38px -22px rgba(99, 102, 241, 0.8);
+    }
+    .btn-primary:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 30px 54px -24px rgba(99, 102, 241, 0.9);
+    }
+    .btn-danger {
+      background: linear-gradient(135deg, #ef4444, #f87171);
+      color: var(--text);
+      box-shadow: 0 24px 46px -26px rgba(239, 68, 68, 0.7);
+    }
+    .btn-danger:hover { transform: translateY(-3px); }
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      border-color: var(--stroke);
+    }
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(99, 102, 241, 0.4);
+      transform: translateY(-2px);
+    }
+    .pill {
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--stroke);
+      background: rgba(255, 255, 255, 0.04);
+      font-size: 0.82rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      transition: background var(--transition), border-color var(--transition), color var(--transition);
+    }
+    .pill--accent {
+      background: rgba(99, 102, 241, 0.22);
+      border-color: rgba(99, 102, 241, 0.48);
+      color: var(--text);
+    }
+    .pill--neutral { background: rgba(255, 255, 255, 0.04); }
+    .audio-visualizer {
+      position: relative;
+      width: 100%;
+      height: 72px;
+      border-radius: var(--rounded-md);
+      border: 1px solid var(--stroke);
+      overflow: hidden;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(16, 185, 129, 0.12));
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+    }
+    .audio-visualizer::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(120deg, rgba(99, 102, 241, 0.28), rgba(16, 185, 129, 0.18));
+      opacity: 0;
+      transition: opacity 240ms ease;
+    }
+    .audio-visualizer.is-active::after { opacity: 0.45; }
+    .audio-level-bar {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 0%;
+      background: linear-gradient(90deg, rgba(99, 102, 241, 0.85), rgba(129, 140, 248, 0.85), rgba(16, 185, 129, 0.75));
+      border-radius: inherit;
+      transition: width 90ms ease-out;
+      filter: drop-shadow(0 0 18px rgba(99, 102, 241, 0.45));
+      animation: gradientShift 8s linear infinite;
+    }
+    .tuning-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      border-radius: var(--rounded-md);
+      border: 1px solid var(--stroke-muted);
+      background: rgba(12, 12, 12, 0.48);
+      padding: 20px;
+    }
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .input-group label {
+      font-size: 0.78rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-subtle);
+      font-weight: 600;
+    }
+    input[type="number"],
+    input[type="text"] {
+      background: rgba(12, 12, 12, 0.72);
+      border: 1px solid var(--stroke);
+      border-radius: 14px;
+      padding: 12px 14px;
+      color: var(--text);
+      font-size: 0.97rem;
+      transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+    }
+    input[type="number"]:focus,
+    input[type="text"]:focus {
+      border-color: rgba(129, 140, 248, 0.8);
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.12);
+      outline: none;
+      background: rgba(20, 20, 20, 0.92);
+    }
     input[readonly] { cursor: pointer; }
-    .share-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 20px; }
-    .share-card { background: var(--bg-tertiary); border: 1px solid var(--border-secondary); border-radius: 12px; padding: 20px; transition: all 0.3s; }
-    .share-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); border-color: var(--accent); }
-    .share-card h3 { margin-bottom: 8px; font-size: 1.2rem; color: var(--text-secondary); }
-    .share-card p { color: var(--text-tertiary); font-size: 0.9rem; margin-bottom: 16px; }
-    .url-group { display: flex; gap: 8px; }
-    .url-group input { flex: 1; }
-    .viewer-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
-    .viewer-chip { padding: 8px 16px; background: linear-gradient(135deg, var(--bg-tertiary), #1f1f2e); border: 1px solid var(--border-primary); border-radius: 20px; font-family: 'Courier New', monospace; font-size: 0.85rem; color: var(--text-secondary); display: flex; align-items: center; gap: 8px; transition: all 0.3s; }
-    .viewer-chip:hover { border-color: var(--accent); color: var(--text-primary); transform: translateY(-2px); }
-    .viewer-chip::before { content: ''; color: var(--success); font-size: 1.2rem; }
-    .quality-panel { margin-top: 16px; padding: 16px; background: var(--bg-primary); border: 1px solid var(--border-secondary); border-radius: 10px; font-family: 'Courier New', monospace; font-size: 0.85rem; line-height: 1.6; color: var(--text-secondary); white-space: pre-wrap; max-height: 300px; overflow-y: auto; }
-    .info-box { background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 10px; padding: 16px; margin: 16px 0; }
-    .info-box h4 { color: var(--accent-hover); margin-bottom: 12px; font-size: 1rem; }
-    .info-box ol { padding-left: 20px; color: var(--text-secondary); }
-    .info-box li { margin: 8px 0; }
-    .network-grid { display: grid; gap: 12px; margin-top: 12px; }
-    .network-item { padding: 12px; background: var(--bg-tertiary); border: 1px solid var(--border-secondary); border-radius: 8px; display: flex; justify-content: space-between; align-items: center; transition: all 0.3s; }
-    .network-item:hover { border-color: var(--accent); transform: translateX(4px); }
-    .network-item strong { color: var(--accent-hover); min-width: 100px; }
-    .network-item span { font-family: 'Courier New', monospace; color: var(--text-secondary); }
-    .notification { position: fixed; bottom: 24px; right: 24px; padding: 16px 24px; background: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 12px; box-shadow: var(--shadow); transform: translateX(400px); transition: transform 0.3s ease; z-index: 1000; display: flex; align-items: center; gap: 12px; max-width: 400px; }
+    .tune-status {
+      text-align: center;
+      color: var(--text-subtle);
+      font-size: 0.92rem;
+      letter-spacing: 0.02em;
+    }
+    .info-box {
+      border-radius: var(--rounded-md);
+      padding: 22px;
+      background: rgba(99, 102, 241, 0.08);
+      border: 1px solid rgba(99, 102, 241, 0.25);
+      display: grid;
+      gap: 12px;
+    }
+    .info-box--success {
+      background: rgba(16, 185, 129, 0.1);
+      border-color: rgba(16, 185, 129, 0.3);
+    }
+    .info-box h4 {
+      font-size: 0.95rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .info-box p,
+    .info-box ol {
+      color: var(--text-subtle);
+      font-size: 0.9rem;
+      line-height: 1.7;
+    }
+    .info-box ol {
+      display: grid;
+      gap: 10px;
+      padding-left: 18px;
+    }
+    .network-grid {
+      display: grid;
+      gap: 14px;
+    }
+    .network-address {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      border-radius: var(--rounded-md);
+      background: rgba(12, 12, 12, 0.55);
+      border: 1px solid var(--stroke-muted);
+      font-family: "Menlo", "Fira Code", "Roboto Mono", monospace;
+      color: var(--text-muted);
+      transition: transform var(--transition), border-color var(--transition), color var(--transition);
+    }
+    .network-address strong { color: var(--text); }
+    .network-address:hover {
+      transform: translateY(-2px);
+      border-color: rgba(99, 102, 241, 0.35);
+      color: var(--text);
+    }
+    .viewer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+    }
+    .viewer-chip {
+      padding: 10px 16px;
+      border-radius: 999px;
+      border: 1px solid var(--stroke);
+      background: rgba(12, 12, 12, 0.55);
+      font-family: "Menlo", "Fira Code", "Roboto Mono", monospace;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      text-align: center;
+      transition: transform var(--transition), border-color var(--transition), color var(--transition);
+      animation: fadeUp 0.85s ease both;
+    }
+    .viewer-chip:hover {
+      transform: translateY(-3px);
+      border-color: rgba(99, 102, 241, 0.35);
+      color: var(--text);
+    }
+    .viewer-empty {
+      padding: 32px;
+      border-radius: var(--rounded-md);
+      text-align: center;
+      color: var(--text-subtle);
+      background: rgba(12, 12, 12, 0.5);
+      border: 1px dashed var(--stroke-muted);
+      font-size: 0.95rem;
+    }
+    .quality-panel {
+      border-radius: var(--rounded-md);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(10, 10, 10, 0.65);
+      padding: 18px;
+      font-family: "Menlo", "Fira Code", "Roboto Mono", monospace;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      line-height: 1.8;
+      max-height: 240px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+    }
+    .share-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 18px;
+    }
+    .share-card {
+      border-radius: var(--rounded-md);
+      border: 1px solid var(--stroke-muted);
+      background: rgba(12, 12, 12, 0.55);
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      transition: transform var(--transition), border-color var(--transition);
+    }
+    .share-card:hover {
+      transform: translateY(-3px);
+      border-color: rgba(99, 102, 241, 0.3);
+    }
+    .share-card h3 { font-size: 1.15rem; }
+    .share-card p { color: var(--text-subtle); font-size: 0.9rem; }
+    .url-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .url-group input {
+      flex: 1;
+      font-family: "Menlo", "Fira Code", "Roboto Mono", monospace;
+      font-size: 0.88rem;
+      letter-spacing: 0.02em;
+    }
+    .notification {
+      position: fixed;
+      bottom: 32px;
+      right: 32px;
+      padding: 18px 24px;
+      border-radius: var(--rounded-md);
+      border: 1px solid var(--stroke);
+      background: rgba(12, 12, 12, 0.88);
+      color: var(--text);
+      box-shadow: var(--shadow);
+      transform: translateX(120%);
+      transition: transform 260ms cubic-bezier(0.35, 0.7, 0.4, 1);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      z-index: 1000;
+      backdrop-filter: blur(18px);
+    }
+    .notification::before {
+      content: "";
+      display: inline-flex;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 14px rgba(99, 102, 241, 0.7);
+    }
+    .notification.success::before {
+      background: var(--success);
+      box-shadow: 0 0 14px rgba(16, 185, 129, 0.6);
+    }
+    .notification.error::before {
+      background: var(--danger);
+      box-shadow: 0 0 14px rgba(239, 68, 68, 0.6);
+    }
     .notification.show { transform: translateX(0); }
-    .notification.success { border-color: var(--success); }
-    .notification.error { border-color: var(--danger); }
-    .notification::before { content: ''; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--success); color: white; font-weight: bold; }
-    .notification.error::before { content: ''; background: var(--danger); }
-    @media (max-width: 768px) { header h1 { font-size: 2rem; } .card { padding: 16px; } .controls { flex-direction: column; width: 100%; } .btn { width: 100%; justify-content: center; } .tuning-grid { grid-template-columns: 1fr; } .share-grid { grid-template-columns: 1fr; } }
+    a {
+      color: var(--accent-strong);
+      text-decoration: none;
+      transition: color var(--transition);
+    }
+    a:hover { color: #a5b4fc; }
+    @keyframes fadeUp {
+      0% { opacity: 0; transform: translateY(16px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      100% { background-position: 100% 50%; }
+    }
+    @keyframes drift {
+      0% { transform: translate3d(-12%, -8%, 0) scale(1); }
+      50% { transform: translate3d(8%, 6%, 0) scale(1.07); }
+      100% { transform: translate3d(-12%, -8%, 0) scale(1); }
+    }
+    @media (max-width: 720px) {
+      body { padding: 36px 18px; }
+      .page-header { padding: 32px 24px; }
+      .controls { flex-direction: column; align-items: stretch; }
+      .controls .pill { margin-left: 0; width: 100%; text-align: center; }
+      .btn { width: 100%; justify-content: center; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <header>
-      <h1> Live Audio Share</h1>
-      <p>Stream your system audio to all devices on your network</p>
+    <header class="page-header" style="--delay:0s;">
+      <div class="header-copy">
+        <span class="eyebrow">Host Console</span>
+        <h1>Live Audio Share</h1>
+        <p>Stream your desktop audio across the network with studio-grade processing and a clean control surface.</p>
+      </div>
       <div class="status-bar">
-        <div id="connectionStatus" class="status-item"> Connecting...</div>
-        <div id="clientsCount" class="status-item"> 0 listeners</div>
+        <div id="connectionStatus" class="status-item">Connecting...</div>
+        <div id="clientsCount" class="status-item">0 listeners</div>
       </div>
     </header>
-    <div class="card">
-      <h2> Network Information</h2>
-      <div id="networkAddresses" class="network-grid"></div>
-    </div>
-    <div class="card">
-      <h2> System Audio Stream</h2>
-      <div class="controls">
-        <button id="startAudioStream" class="btn btn-primary"> Start Streaming</button>
-        <button id="stopAudioStream" class="btn btn-danger" style="display:none;"> Stop Streaming</button>
-        <div id="audioStatus" style="color: var(--text-tertiary); margin-left: auto;">Not streaming</div>
-      </div>
-      <div class="audio-visualizer"><div id="audioLevelBar" class="audio-level-bar"></div></div>
-      <div class="tuning-grid">
-        <div class="input-group"><label>Latency Target (ms)</label><input type="number" id="latencyInput" value="150" min="80" max="800" step="10" /></div>
-        <div class="input-group"><label>Bitrate (kbps) 🎵</label><input type="number" id="bitrateInput" value="510" min="128" max="510" step="16" /></div>
-        <div class="input-group"><label>&nbsp;</label><button id="applyTuning" class="btn btn-secondary">Apply Settings</button></div>
-      </div>
-      <div id="tuneStatus" style="text-align: center; color: var(--text-tertiary); font-size: 0.9rem;">Target: 150ms / 510kbps (ptime 10ms) • HiFi Mode 🎧</div>
-      <div class="info-box" style="background: rgba(16, 185, 129, 0.08); border-color: rgba(16, 185, 129, 0.3);"><h4 style="color: var(--success);">🎵 HiFi Audio Quality</h4><p style="color: var(--text-secondary); margin: 8px 0;">Maximum quality: 510kbps Opus stereo, 48kHz sample rate, full bandwidth (20Hz-20kHz). Optimized for music with enhanced bass and treble response.</p></div>
-      <div class="info-box"><h4> Quick Start Guide</h4><ol><li>Click "Start Streaming" above</li><li>Select your screen or window to share</li><li><strong>Check "Share audio" or "Share system audio"</strong></li><li>Play any audio on your computer</li><li>Share the listener URL below with others</li></ol></div>
-    </div>
-    <div class="card">
-      <h2> Connected Viewers (<span id="viewerCountInline">0</span>)</h2>
-      <div id="viewerList" class="viewer-grid"></div>
-      <div id="qualityPanel" class="quality-panel" style="display:none;"></div>
-    </div>
-    <div class="card">
-      <h2> Share Links</h2>
-      <div class="share-grid">
-        <div class="share-card"><h3> Listener Page</h3><p>Send this to anyone who wants to listen</p><div class="url-group"><input type="text" id="listenUrlInput" readonly /><button id="copyListenUrl" class="btn btn-secondary"></button></div></div>
-        <div class="share-card"><h3> Control Page</h3><p>Host control interface (this page)</p><div class="url-group"><input type="text" id="shareUrlInput" readonly /><button id="copyUrl" class="btn btn-secondary"></button></div></div>
-      </div>
-    </div>
+    <main class="layout-grid">
+      <section class="card card--network" style="--delay:0.08s;">
+        <div class="card-head">
+          <span class="card-icon">🌐</span>
+          <div>
+            <h2>Network Reachability</h2>
+            <p class="card-subtitle">Pick the address that matches each listener's network segment.</p>
+          </div>
+        </div>
+        <div id="networkAddresses" class="network-grid"></div>
+      </section>
+      <section class="card card--wide" style="--delay:0.14s;">
+        <div class="card-head">
+          <span class="card-icon">🎛️</span>
+          <div>
+            <h2>System Audio Stream</h2>
+            <p class="card-subtitle">Capture audio with enhanced EQ, compression and adaptive bitrate.</p>
+          </div>
+          <div id="audioStatus" class="pill pill--neutral">Not streaming</div>
+        </div>
+        <div class="controls">
+          <button id="startAudioStream" class="btn btn-primary"><span class="btn-icon">▶</span><span>Start Stream</span></button>
+          <button id="stopAudioStream" class="btn btn-danger" style="display:none;"><span class="btn-icon">■</span><span>Stop Stream</span></button>
+        </div>
+        <div class="audio-visualizer"><div id="audioLevelBar" class="audio-level-bar"></div></div>
+        <div class="tuning-grid">
+          <div class="input-group">
+            <label for="latencyInput">Latency Target (ms)</label>
+            <input type="number" id="latencyInput" value="150" min="80" max="800" step="10" />
+          </div>
+          <div class="input-group">
+            <label for="bitrateInput">Bitrate (kbps)</label>
+            <input type="number" id="bitrateInput" value="510" min="128" max="510" step="16" />
+          </div>
+          <div class="input-group">
+            <label>&nbsp;</label>
+            <button id="applyTuning" class="btn btn-secondary"><span class="btn-icon">⚙</span><span>Apply Settings</span></button>
+          </div>
+        </div>
+        <div id="tuneStatus" class="tune-status">Target: 150ms / 510kbps (ptime 10ms) • HiFi Mode 🎧</div>
+        <div class="info-box info-box--success">
+          <h4>HiFi Audio Chain</h4>
+          <p>510kbps Opus stereo at 48kHz with tuned EQ, subtle compression and presence boost for full-spectrum playback.</p>
+        </div>
+        <div class="info-box">
+          <h4>Quick Start</h4>
+          <ol>
+            <li>Select <strong>Start Stream</strong> and choose a screen/window.</li>
+            <li>Enable the <strong>Share audio / Share system audio</strong> checkbox.</li>
+            <li>Play any content and share the listener link below.</li>
+            <li>Adjust latency or bitrate in real time if needed.</li>
+          </ol>
+        </div>
+      </section>
+      <section class="card" style="--delay:0.2s;">
+        <div class="card-head">
+          <span class="card-icon">👂</span>
+          <div>
+            <h2>Connected Listeners <span>(<span id="viewerCountInline">0</span>)</span></h2>
+            <p class="card-subtitle">Monitor active sessions and ongoing network quality.</p>
+          </div>
+        </div>
+        <div id="viewerList" class="viewer-grid"></div>
+        <div id="qualityPanel" class="quality-panel" style="display:none;"></div>
+      </section>
+      <section class="card card--wide" style="--delay:0.26s;">
+        <div class="card-head">
+          <span class="card-icon">🔗</span>
+          <div>
+            <h2>Share Links</h2>
+            <p class="card-subtitle">Copy and send the right entry point for every participant.</p>
+          </div>
+        </div>
+        <div class="share-grid">
+          <div class="share-card">
+            <h3>Listener Page</h3>
+            <p>Send this to anyone who should tune in to the live audio stream.</p>
+            <div class="url-group">
+              <input type="text" id="listenUrlInput" readonly />
+              <button id="copyListenUrl" class="btn btn-secondary"><span class="btn-icon">📋</span><span>Copy Link</span></button>
+            </div>
+          </div>
+          <div class="share-card">
+            <h3>Control Page</h3>
+            <p>Bookmark this address to reopen the host console instantly.</p>
+            <div class="url-group">
+              <input type="text" id="shareUrlInput" readonly />
+              <button id="copyUrl" class="btn btn-secondary"><span class="btn-icon">📋</span><span>Copy Link</span></button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
   </div>
   <div id="notification" class="notification"></div>
   <script src="script.js"></script>
@@ -130,19 +656,45 @@
           if (!viewerList) return;
           viewerList.innerHTML = '';
           if (viewerIds && viewerIds.length > 0) {
-            viewerIds.forEach(id => { const chip = document.createElement('div'); chip.className = 'viewer-chip'; chip.textContent = id.substring(0, 8); chip.title = id; viewerList.appendChild(chip); });
+            viewerIds.forEach(id => {
+              const chip = document.createElement('div');
+              chip.className = 'viewer-chip';
+              chip.textContent = id.substring(0, 8);
+              chip.title = id;
+              viewerList.appendChild(chip);
+            });
             qualityPanel.style.display = 'block';
-          } else { viewerList.innerHTML = '<div style="color: var(--text-tertiary); text-align: center; padding: 20px;">No viewers connected</div>'; qualityPanel.style.display = 'none'; qualityPanel.textContent = ''; }
+          } else {
+            viewerList.innerHTML = '<div class="viewer-empty">No listeners connected yet</div>';
+            qualityPanel.style.display = 'none';
+            qualityPanel.textContent = '';
+          }
           if (viewerCountInline) viewerCountInline.textContent = viewerCount || 0;
         });
-        socket.on('listener-stats', ({ viewerId, rttMs, jitterMs, bitrateKbps, fractionLoss }) => { latestStats[viewerId] = { rttMs, jitterMs, bitrateKbps, fractionLoss, timestamp: Date.now() }; renderQuality(); });
+        socket.on('listener-stats', ({ viewerId, rttMs, jitterMs, bitrateKbps, fractionLoss }) => {
+          latestStats[viewerId] = { rttMs, jitterMs, bitrateKbps, fractionLoss, timestamp: Date.now() };
+          renderQuality();
+        });
         function renderQuality() {
           const qualityPanel = document.getElementById('qualityPanel');
           if (!qualityPanel) return;
-          const lines = Object.entries(latestStats).sort((a, b) => a[0].localeCompare(b[0])).map(([id, stats]) => { const shortId = id.substring(0, 8); const quality = getQualityIndicator(stats); return quality + ' ' + shortId + '\n   RTT: ' + stats.rttMs + 'ms | Jitter: ' + stats.jitterMs + 'ms | Bitrate: ' + stats.bitrateKbps + 'kbps | Loss: ' + stats.fractionLoss; });
+          const lines = Object.entries(latestStats)
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([id, stats]) => {
+              const shortId = id.substring(0, 8);
+              const quality = getQualityIndicator(stats);
+              return quality + ' ' + shortId + '\n   RTT: ' + stats.rttMs + 'ms | Jitter: ' + stats.jitterMs + 'ms | Bitrate: ' + stats.bitrateKbps + 'kbps | Loss: ' + stats.fractionLoss;
+            });
           qualityPanel.textContent = lines.length > 0 ? lines.join('\n\n') : 'Waiting for quality metrics...';
         }
-        function getQualityIndicator(stats) { const rtt = parseFloat(stats.rttMs) || 0; const jitter = parseFloat(stats.jitterMs) || 0; const loss = parseFloat(stats.fractionLoss) || 0; if (rtt < 100 && jitter < 10 && loss < 1) return ''; if (rtt < 200 && jitter < 20 && loss < 3) return ''; return ''; }
+        function getQualityIndicator(stats) {
+          const rtt = parseFloat(stats.rttMs) || 0;
+          const jitter = parseFloat(stats.jitterMs) || 0;
+          const loss = parseFloat(stats.fractionLoss) || 0;
+          if (rtt < 100 && jitter < 10 && loss < 1) return '✅';
+          if (rtt < 200 && jitter < 20 && loss < 3) return '⚠️';
+          return '🛑';
+        }
       };
       waitForSocket();
     })();
