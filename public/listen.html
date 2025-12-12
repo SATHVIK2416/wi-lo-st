@@ -6,229 +6,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Live Audio Share · Listener</title>
     <script src="/socket.io/socket.io.js"></script>
-    <style>
-        :root {
-            --bg: #0a0a0a;
-            --fg: #171717;
-            --text: #ededed;
-            --text-muted: #a1a1a1;
-            --border: #333;
-            --accent: #fff;
-            --accent-fg: #000;
-            --font: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            background: var(--bg);
-            color: var(--text);
-            font-family: var(--font);
-            line-height: 1.5;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .container {
-            width: 100%;
-            max-width: 400px;
-            display: flex;
-            flex-direction: column;
-            gap: 24px;
-        }
-
-        .card {
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 32px;
-            background: var(--bg);
-            text-align: center;
-        }
-
-        h1 {
-            font-size: 1.25rem;
-            font-weight: 600;
-            margin-bottom: 8px;
-            letter-spacing: -0.02em;
-        }
-
-        p {
-            color: var(--text-muted);
-            font-size: 0.9rem;
-            margin-bottom: 24px;
-        }
-
-        .status-pill {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 99px;
-            background: #222;
-            color: var(--text-muted);
-            font-size: 0.8rem;
-            margin-bottom: 24px;
-            font-family: monospace;
-        }
-
-        .status-pill.live {
-            color: #4ade80;
-            background: rgba(74, 222, 128, 0.1);
-        }
-
-        .status-pill.error {
-            color: #f87171;
-            background: rgba(248, 113, 113, 0.1);
-        }
-
-        .visualizer {
-            height: 64px;
-            display: flex;
-            align-items: flex-end;
-            justify-content: center;
-            gap: 2px;
-            margin-bottom: 32px;
-            opacity: 0.5;
-        }
-
-        .bar {
-            width: 4px;
-            background: var(--text);
-            border-radius: 2px;
-            transition: height 0.1s;
-            height: 4px;
-        }
-
-        .controls {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            align-items: center;
-        }
-
-        button {
-            background: var(--accent);
-            color: var(--accent-fg);
-            border: none;
-            padding: 12px 32px;
-            border-radius: 6px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: opacity 0.2s;
-            width: 100%;
-        }
-
-        button:hover {
-            opacity: 0.9;
-        }
-
-        button.secondary {
-            background: transparent;
-            border: 1px solid var(--border);
-            color: var(--text);
-        }
-
-        button.secondary:hover {
-            background: #222;
-        }
-
-        .volume-control {
-            width: 100%;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        input[type="range"] {
-            flex: 1;
-            accent-color: var(--accent);
-            height: 4px;
-            border-radius: 2px;
-        }
-
-        .vol-label {
-            font-family: monospace;
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            width: 40px;
-            text-align: right;
-        }
-
-        .stats-row {
-            margin-top: 24px;
-            padding-top: 24px;
-            border-top: 1px solid var(--border);
-            display: flex;
-            justify-content: center;
-            gap: 16px;
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            font-family: monospace;
-        }
-
-        .notification {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%) translateY(100px);
-            background: #333;
-            padding: 8px 16px;
-            border-radius: 6px;
-            font-size: 0.85rem;
-            transition: transform 0.2s;
-        }
-
-        .notification.show {
-            transform: translateX(-50%) translateY(0);
-        }
-
-        a {
-            color: var(--text-muted);
-            text-decoration: none;
-            font-size: 0.85rem;
-            margin-top: 16px;
-            display: inline-block;
-        }
-
-        a:hover {
-            color: var(--text);
-        }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 
-<body>
+<body class="listener-page">
     <div class="container">
-        <div class="card">
-            <h1>Audio Listener</h1>
-            <div id="audioStatus" class="status-pill">Waiting for stream...</div>
+        <div class="page-header">
+            <div class="eyebrow" id="audioStatus">Waiting...</div>
+            <h1>Live Listener</h1>
+            <p>High-fidelity low latency audio stream</p>
+        </div>
 
-            <div id="audioVisualizer" class="visualizer"></div>
+        <div id="audioVisualizer" class="visualizer-bars"></div>
 
-            <div class="controls">
-                <button id="enableAudio">Enable Audio</button>
-                <button id="muteAudio" class="secondary" style="display:none;">Mute</button>
+        <div class="controls" style="flex-direction: column; width: 100%; max-width: 320px; margin: 0 auto;">
+            <button id="enableAudio" class="btn btn-primary" style="width: 100%; justify-content: center;">Enable Audio
+                Stream</button>
+            <button id="muteAudio" class="btn btn-secondary"
+                style="width: 100%; display:none; justify-content: center;">Mute Audio</button>
 
-                <div class="volume-control">
-                    <span style="font-size: 0.8rem">VOL</span>
-                    <input id="volumeSlider" type="range" min="0" max="100" value="100" />
-                    <span id="volumeDisplay" class="vol-label">100%</span>
-                </div>
+            <div class="volume-control"
+                style="width: 100%; display: flex; align-items: center; gap: 12px; margin-top: 16px;">
+                <span class="btn-icon">🔊</span>
+                <input id="volumeSlider" type="range" min="0" max="100" value="100" />
             </div>
+            <div id="volumeDisplay" style="font-size: 0.8rem; color: var(--text-tertiary);">100%</div>
+        </div>
 
-            <div class="stats-row">
-                <span id="connectionStatus">Connecting...</span>
-                <span id="clientsCount">0 listeners</span>
+        <div style="text-align: center; margin-top: 32px;">
+            <div id="connectionStatus" style="font-size: 0.8rem; color: var(--text-secondary);">Connecting...</div>
+            <div id="clientsCount" style="font-size: 0.75rem; color: var(--text-tertiary);">0 listeners</div>
+            <div id="qualityStats"
+                style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-tertiary); margin-top: 8px;">
             </div>
-            <div id="qualityStats" style="font-family: monospace; font-size: 0.7rem; color: #666; margin-top: 8px;">
-            </div>
-
-            <a href="/">← Host Console</a>
         </div>
     </div>
     <div id="notification" class="notification"></div>
@@ -240,7 +50,10 @@
 
         const setStatus = (msg, type) => {
             audioStatus.textContent = msg;
-            audioStatus.className = 'status-pill ' + (type || '');
+            // Map old classes to new CSS logic or just text
+            if (type === 'error') audioStatus.style.color = 'var(--danger)';
+            else if (type === 'live') audioStatus.style.color = 'var(--success)';
+            else audioStatus.style.color = 'var(--accent-glow)';
         };
 
         document.addEventListener('DOMContentLoaded', () => { initBars(); initSocket(); bindUi(); });
@@ -267,15 +80,15 @@
 
         function initSocket() {
             socket = io();
-            socket.on('connect', () => { connectionStatus.textContent = 'Connected'; connectionStatus.style.color = '#4ade80'; });
-            socket.on('disconnect', () => { connectionStatus.textContent = 'Disconnected'; connectionStatus.style.color = '#f87171'; setStatus('Disconnected', 'error'); teardown(); });
+            socket.on('connect', () => { connectionStatus.textContent = 'Connected'; connectionStatus.style.color = 'var(--success)'; });
+            socket.on('disconnect', () => { connectionStatus.textContent = 'Disconnected'; connectionStatus.style.color = 'var(--danger)'; setStatus('Disconnected', 'error'); teardown(); });
             socket.on('no-host', () => { setStatus('No host', 'error'); flash('No host streaming'); enableBtn.style.display = 'block'; });
             socket.on('host-left', () => { setStatus('Host left', 'error'); teardown(); });
             socket.on('host-stopped', () => { setStatus('Host stopped', ''); teardown(); });
             socket.on('host-streaming', () => { if (enableBtn.style.display === 'none') socket.emit('viewer-join'); });
             socket.on('webrtc-offer', async ({ sdp, hostId }) => { hostIdRef = hostId; await ensurePeer(); await pc.setRemoteDescription(new RTCSessionDescription(sdp)); const answer = await pc.createAnswer(); await pc.setLocalDescription(answer); socket.emit('webrtc-answer', { hostId, sdp: answer }); });
             socket.on('webrtc-ice-candidate', ({ candidate, from }) => { if (pc && candidate && from === hostIdRef) pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => { }); });
-            socket.on('stats', ({ viewerCount }) => { clientsCount.textContent = `${viewerCount} listeners`; });
+            socket.on('stats', ({ viewerCount }) => { if (clientsCount) clientsCount.textContent = `${viewerCount} listeners`; });
         }
 
         async function joinStream() { enableBtn.style.display = 'none'; muteBtn.style.display = 'block'; setStatus('Joining...', ''); socket.emit('viewer-join'); }

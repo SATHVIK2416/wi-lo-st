@@ -4,309 +4,164 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Live Audio Share</title>
+  <title>Live Audio Share · Host Console</title>
   <script src="/socket.io/socket.io.js"></script>
-  <style>
-    :root {
-      --bg: #0a0a0a;
-      --fg: #171717;
-      --text: #ededed;
-      --text-muted: #a1a1a1;
-      --border: #333;
-      --accent: #fff;
-      --accent-fg: #000;
-      --font: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
-    }
-
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: var(--font);
-      line-height: 1.5;
-      display: flex;
-      justify-content: center;
-      padding: 40px 20px;
-      min-height: 100vh;
-    }
-
-    .container {
-      width: 100%;
-      max-width: 600px;
-      display: flex;
-      flex-direction: column;
-      gap: 24px;
-    }
-
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      border-bottom: 1px solid var(--border);
-      padding-bottom: 16px;
-    }
-
-    h1 {
-      font-size: 1.25rem;
-      font-weight: 600;
-      letter-spacing: -0.02em;
-    }
-
-    .status {
-      font-size: 0.875rem;
-      color: var(--text-muted);
-      font-family: monospace;
-    }
-
-    .card {
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 24px;
-      background: var(--bg);
-    }
-
-    .card h2 {
-      font-size: 1rem;
-      font-weight: 500;
-      margin-bottom: 16px;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .controls {
-      display: flex;
-      gap: 12px;
-      margin-bottom: 20px;
-    }
-
-    button {
-      background: var(--border);
-      color: var(--text);
-      border: none;
-      padding: 10px 20px;
-      border-radius: 6px;
-      font-size: 0.9rem;
-      font-weight: 500;
-      cursor: pointer;
-      transition: background 0.2s;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    button:hover {
-      background: #444;
-    }
-
-    button.primary {
-      background: var(--accent);
-      color: var(--accent-fg);
-    }
-
-    button.primary:hover {
-      opacity: 0.9;
-    }
-
-    .visualizer {
-      height: 48px;
-      background: #111;
-      border-radius: 4px;
-      overflow: hidden;
-      position: relative;
-    }
-
-    .bar {
-      height: 100%;
-      width: 0%;
-      background: var(--text);
-      transition: width 0.1s;
-    }
-
-    .grid {
-      display: grid;
-      gap: 12px;
-    }
-
-    .row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 12px;
-      background: #111;
-      border-radius: 6px;
-      font-family: monospace;
-      font-size: 0.9rem;
-    }
-
-    .row strong {
-      color: var(--text);
-    }
-
-    .row span {
-      color: var(--text-muted);
-    }
-
-    input[type="text"],
-    input[type="number"] {
-      background: #111;
-      border: 1px solid var(--border);
-      color: var(--text);
-      padding: 8px 12px;
-      border-radius: 6px;
-      font-family: inherit;
-      width: 100%;
-    }
-
-    .input-group {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-    }
-
-    .input-group label {
-      font-size: 0.875rem;
-      color: var(--text-muted);
-      min-width: 80px;
-    }
-
-    .copy-btn {
-      padding: 8px 12px;
-      font-size: 0.8rem;
-    }
-
-    .viewer-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-    }
-
-    .viewer-tag {
-      background: #222;
-      padding: 4px 10px;
-      border-radius: 4px;
-      font-size: 0.8rem;
-      font-family: monospace;
-      color: var(--text-muted);
-    }
-
-    #qualityPanel {
-      margin-top: 16px;
-      font-family: monospace;
-      font-size: 0.8rem;
-      color: var(--text-muted);
-      white-space: pre-wrap;
-      line-height: 1.6;
-    }
-  </style>
+  <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
   <div class="container">
-    <header>
+    <header class="page-header" style="--delay:0s;">
+      <span class="eyebrow">Host Console</span>
       <h1>Live Audio Share</h1>
-      <div id="connectionStatus" class="status">Connecting...</div>
+      <p>Stream your desktop audio across the network with studio-grade processing and a clean control surface.</p>
+      <div class="status-bar">
+        <div id="connectionStatus" class="status-item">● Connecting...</div>
+        <div id="clientsCount" class="status-item">0 listeners</div>
+      </div>
     </header>
 
-    <div class="card">
-      <h2>Stream Control</h2>
-      <div class="controls">
-        <button id="startAudioStream" class="primary">Start Stream</button>
-        <button id="stopAudioStream" style="display:none;">Stop Stream</button>
-      </div>
-      <div class="visualizer">
-        <div id="audioLevelBar" class="bar"></div>
-      </div>
-      <div style="margin-top: 20px; display: flex; flex-direction: column; gap: 12px;">
-        <div class="input-group">
-          <label>Latency</label>
-          <input type="number" id="latencyInput" value="150" step="10">
+    <main class="layout-grid">
+      <!-- Network Section -->
+      <section class="card card--network" style="--delay: 100ms;">
+        <div class="card-head">
+          <h2>
+            <div class="card-icon">🌐</div> Network
+          </h2>
         </div>
-        <div class="input-group">
-          <label>Bitrate</label>
-          <input type="number" id="bitrateInput" value="510" step="10">
-        </div>
-        <button id="applyTuning" style="width: fit-content;">Apply Settings</button>
-      </div>
-      <div id="tuneStatus" class="status" style="margin-top: 12px;">Target: 150ms / 510kbps</div>
-    </div>
+        <p class="card-subtitle" style="margin-bottom: 20px;">Available addresses for listeners</p>
+        <div id="networkAddresses" class="network-grid"></div>
+      </section>
 
-    <div class="card">
-      <h2>Network</h2>
-      <div id="networkAddresses" class="grid"></div>
-    </div>
-
-    <div class="card">
-      <h2>Listeners (<span id="viewerCountInline">0</span>)</h2>
-      <div id="viewerList" class="viewer-list">
-        <div class="status">No listeners yet</div>
-      </div>
-      <div id="qualityPanel" style="display:none;"></div>
-    </div>
-
-    <div class="card">
-      <h2>Share</h2>
-      <div class="grid">
-        <div class="input-group">
-          <input type="text" id="listenUrlInput" readonly>
-          <button id="copyListenUrl" class="copy-btn">Copy Listener Link</button>
+      <!-- Viewers Section -->
+      <section class="card card--listeners" style="--delay: 150ms;">
+        <div class="card-head">
+          <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+            <h2>
+              <div class="card-icon">👂</div> Listeners
+            </h2>
+            <span id="viewerCountInline" class="pill pill--neutral">0 Active</span>
+          </div>
         </div>
-        <div class="input-group">
-          <input type="text" id="shareUrlInput" readonly>
-          <button id="copyUrl" class="copy-btn">Copy Host Link</button>
+        <div id="viewerList" class="viewer-grid"></div>
+        <div id="qualityPanel" class="quality-panel" style="display:none; margin-top:20px;"></div>
+      </section>
+
+      <!-- Audio Control Section -->
+      <section class="card card--wide" style="--delay: 200ms;">
+        <div class="card-head">
+          <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+            <h2>
+              <div class="card-icon">🎛️</div> Audio Stream
+            </h2>
+            <div id="audioStatus" class="pill pill--neutral">OFFLINE</div>
+          </div>
         </div>
-      </div>
-    </div>
+
+        <div class="controls" style="margin-bottom: 24px;">
+          <button id="startAudioStream" class="btn btn-primary"><span class="btn-icon">▶</span> Start Stream</button>
+          <button id="stopAudioStream" class="btn btn-danger" style="display:none;"><span class="btn-icon">■</span> Stop
+            Stream</button>
+        </div>
+
+        <div class="audio-visualizer">
+          <div id="audioLevelBar" class="audio-level-bar"></div>
+        </div>
+
+        <div class="tuning-grid">
+          <div class="input-group">
+            <label for="latencyInput">Latency (ms)</label>
+            <input type="number" id="latencyInput" value="150" min="80" max="800" step="10" />
+          </div>
+          <div class="input-group">
+            <label for="bitrateInput">Bitrate (kbps)</label>
+            <input type="number" id="bitrateInput" value="510" min="128" max="510" step="16" />
+          </div>
+          <div class="input-group" style="justify-content: flex-end;">
+            <button id="applyTuning" class="btn btn-secondary">Update Settings</button>
+          </div>
+        </div>
+        <div id="tuneStatus" class="tune-status">High Fidelity Mode • 48kHz Stereo</div>
+      </section>
+
+      <!-- Share Section -->
+      <section class="card card--wide" style="--delay: 250ms;">
+        <div class="card-head">
+          <h2>
+            <div class="card-icon">🔗</div> Share Access
+          </h2>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 32px;">
+          <div>
+            <p style="margin-bottom: 12px; color: var(--text-secondary); font-size: 0.9rem;">Listener Link</p>
+            <div class="url-group">
+              <input type="text" id="listenUrlInput" readonly />
+              <button id="copyListenUrl">Copy</button>
+            </div>
+          </div>
+          <div>
+            <p style="margin-bottom: 12px; color: var(--text-secondary); font-size: 0.9rem;">Console Link</p>
+            <div class="url-group">
+              <input type="text" id="shareUrlInput" readonly />
+              <button id="copyUrl">Copy</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
   </div>
-
-  <div id="notification"
-    style="position: fixed; bottom: 20px; right: 20px; background: #333; padding: 10px 20px; border-radius: 6px; font-size: 0.9rem; transform: translateY(100px); transition: transform 0.2s;">
-  </div>
-
+  <div id="notification" class="notification"></div>
   <script src="script.js"></script>
   <script>
-    // Minimal inline script for UI updates
     (function () {
       const waitForSocket = () => {
         if (!window.socket) { setTimeout(waitForSocket, 100); return; }
         const latestStats = {};
         socket.on('stats', ({ viewerIds, viewerCount }) => {
-          const list = document.getElementById('viewerList');
-          const count = document.getElementById('viewerCountInline');
-          const panel = document.getElementById('qualityPanel');
-          if (count) count.textContent = viewerCount || 0;
-          if (list) {
-            list.innerHTML = '';
-            if (viewerIds && viewerIds.length) {
-              viewerIds.forEach(id => {
-                const tag = document.createElement('div');
-                tag.className = 'viewer-tag';
-                tag.textContent = id.substring(0, 8);
-                list.appendChild(tag);
-              });
-              if (panel) panel.style.display = 'block';
-            } else {
-              list.innerHTML = '<div class="status">No listeners yet</div>';
-              if (panel) panel.style.display = 'none';
-            }
+          const viewerList = document.getElementById('viewerList');
+          const viewerCountInline = document.getElementById('viewerCountInline');
+          const qualityPanel = document.getElementById('qualityPanel');
+          if (!viewerList) return;
+          viewerList.innerHTML = '';
+          if (viewerIds && viewerIds.length > 0) {
+            viewerIds.forEach(id => {
+              const chip = document.createElement('div');
+              chip.className = 'viewer-chip';
+              chip.textContent = id.substring(0, 8);
+              chip.title = id;
+              viewerList.appendChild(chip);
+            });
+            qualityPanel.style.display = 'block';
+          } else {
+            viewerList.innerHTML = '<div class="viewer-empty">No listeners connected yet</div>';
+            qualityPanel.style.display = 'none';
+            qualityPanel.textContent = '';
           }
+          if (viewerCountInline) viewerCountInline.textContent = viewerCount || 0;
         });
         socket.on('listener-stats', ({ viewerId, rttMs, jitterMs, bitrateKbps, fractionLoss }) => {
           latestStats[viewerId] = { rttMs, jitterMs, bitrateKbps, fractionLoss, timestamp: Date.now() };
           renderQuality();
         });
         function renderQuality() {
-          const panel = document.getElementById('qualityPanel');
-          if (!panel) return;
+          const qualityPanel = document.getElementById('qualityPanel');
+          if (!qualityPanel) return;
           const lines = Object.entries(latestStats)
-            .map(([id, s]) => `${id.substring(0, 8)}: ${s.rttMs}ms RTT | ${s.bitrateKbps}kbps | ${s.fractionLoss}% Loss`)
-            .join('\n');
-          panel.textContent = lines || 'Waiting for metrics...';
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([id, stats]) => {
+              const shortId = id.substring(0, 8);
+              const quality = getQualityIndicator(stats);
+              return quality + ' ' + shortId + '\n   RTT: ' + stats.rttMs + 'ms | Jitter: ' + stats.jitterMs + 'ms | Bitrate: ' + stats.bitrateKbps + 'kbps | Loss: ' + stats.fractionLoss;
+            });
+          qualityPanel.textContent = lines.length > 0 ? lines.join('\n\n') : 'Waiting for quality metrics...';
+        }
+        function getQualityIndicator(stats) {
+          const rtt = parseFloat(stats.rttMs) || 0;
+          const jitter = parseFloat(stats.jitterMs) || 0;
+          const loss = parseFloat(stats.fractionLoss) || 0;
+          if (rtt < 100 && jitter < 10 && loss < 1) return '✅';
+          if (rtt < 200 && jitter < 20 && loss < 3) return '⚠️';
+          return '🛑';
         }
       };
       waitForSocket();
