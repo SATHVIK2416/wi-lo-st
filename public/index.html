@@ -2,107 +2,87 @@
 <html lang="en">
 
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Live Audio Share · Host Console</title>
-  <script src="/socket.io/socket.io.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Stream desktop audio across your network">
+  <title>Live Audio Share</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 
 <body>
   <div class="container">
-    <header class="page-header" style="--delay:0s;">
+    <header class="page-header">
       <span class="eyebrow">Host Console</span>
       <h1>Live Audio Share</h1>
-      <p>Stream your desktop audio across the network with studio-grade processing and a clean control surface.</p>
+      <p>Stream system audio across your network with low latency</p>
       <div class="status-bar">
-        <div id="connectionStatus" class="status-item">● Connecting...</div>
+        <div id="connectionStatus" class="status-item">Connecting...</div>
         <div id="clientsCount" class="status-item">0 listeners</div>
       </div>
     </header>
 
     <main class="layout-grid">
-      <!-- Network Section -->
-      <section class="card card--network" style="--delay: 100ms;">
+      <section class="card card--network" style="--delay:50ms">
         <div class="card-head">
-          <h2>
-            <div class="card-icon">🌐</div> Network
-          </h2>
+          <h2><span class="card-icon">N</span> Network</h2>
         </div>
-        <p class="card-subtitle" style="margin-bottom: 20px;">Available addresses for listeners</p>
+        <p class="card-subtitle" style="margin-bottom:16px">Available addresses</p>
         <div id="networkAddresses" class="network-grid"></div>
       </section>
 
-      <!-- Viewers Section -->
-      <section class="card card--listeners" style="--delay: 150ms;">
+      <section class="card card--listeners" style="--delay:100ms">
         <div class="card-head">
-          <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
-            <h2>
-              <div class="card-icon">👂</div> Listeners
-            </h2>
-            <span id="viewerCountInline" class="pill pill--neutral">0 Active</span>
-          </div>
+          <h2><span class="card-icon">L</span> Listeners</h2>
+          <span id="viewerCountInline" class="pill pill--neutral">0</span>
         </div>
         <div id="viewerList" class="viewer-grid"></div>
-        <div id="qualityPanel" class="quality-panel" style="display:none; margin-top:20px;"></div>
+        <pre id="qualityPanel" class="quality-panel" hidden></pre>
       </section>
 
-      <!-- Audio Control Section -->
-      <section class="card card--wide" style="--delay: 200ms;">
+      <section class="card card--wide" style="--delay:150ms">
         <div class="card-head">
-          <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
-            <h2>
-              <div class="card-icon">🎛️</div> Audio Stream
-            </h2>
-            <div id="audioStatus" class="pill pill--neutral">OFFLINE</div>
-          </div>
+          <h2><span class="card-icon">A</span> Audio Stream</h2>
+          <span id="audioStatus" class="pill pill--neutral">OFFLINE</span>
         </div>
-
-        <div class="controls" style="margin-bottom: 24px;">
-          <button id="startAudioStream" class="btn btn-primary"><span class="btn-icon">▶</span> Start Stream</button>
-          <button id="stopAudioStream" class="btn btn-danger" style="display:none;"><span class="btn-icon">■</span> Stop
-            Stream</button>
+        <div class="controls" style="margin-bottom:20px">
+          <button id="startAudioStream" class="btn btn-primary">Start Stream</button>
+          <button id="stopAudioStream" class="btn btn-danger" hidden>Stop Stream</button>
         </div>
-
         <div class="audio-visualizer">
           <div id="audioLevelBar" class="audio-level-bar"></div>
         </div>
-
         <div class="tuning-grid">
           <div class="input-group">
             <label for="latencyInput">Latency (ms)</label>
-            <input type="number" id="latencyInput" value="150" min="80" max="800" step="10" />
+            <input type="number" id="latencyInput" value="150" min="80" max="800" step="10">
           </div>
           <div class="input-group">
             <label for="bitrateInput">Bitrate (kbps)</label>
-            <input type="number" id="bitrateInput" value="510" min="128" max="510" step="16" />
+            <input type="number" id="bitrateInput" value="510" min="128" max="510" step="16">
           </div>
-          <div class="input-group" style="justify-content: flex-end;">
-            <button id="applyTuning" class="btn btn-secondary">Update Settings</button>
+          <div class="input-group" style="display:flex;align-items:flex-end">
+            <button id="applyTuning" class="btn btn-secondary">Apply</button>
           </div>
         </div>
-        <div id="tuneStatus" class="tune-status">High Fidelity Mode • 48kHz Stereo</div>
+        <div id="tuneStatus" class="tune-status">48kHz Stereo | HiFi Mode</div>
       </section>
 
-      <!-- Share Section -->
-      <section class="card card--wide" style="--delay: 250ms;">
+      <section class="card card--wide" style="--delay:200ms">
         <div class="card-head">
-          <h2>
-            <div class="card-icon">🔗</div> Share Access
-          </h2>
+          <h2><span class="card-icon">S</span> Share</h2>
         </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 32px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
           <div>
-            <p style="margin-bottom: 12px; color: var(--text-secondary); font-size: 0.9rem;">Listener Link</p>
+            <p class="card-subtitle" style="margin-bottom:8px">Listener URL</p>
             <div class="url-group">
-              <input type="text" id="listenUrlInput" readonly />
+              <input type="text" id="listenUrlInput" readonly>
               <button id="copyListenUrl">Copy</button>
             </div>
           </div>
           <div>
-            <p style="margin-bottom: 12px; color: var(--text-secondary); font-size: 0.9rem;">Console Link</p>
+            <p class="card-subtitle" style="margin-bottom:8px">Console URL</p>
             <div class="url-group">
-              <input type="text" id="shareUrlInput" readonly />
+              <input type="text" id="shareUrlInput" readonly>
               <button id="copyUrl">Copy</button>
             </div>
           </div>
@@ -110,61 +90,40 @@
       </section>
     </main>
   </div>
+
   <div id="notification" class="notification"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
   <script src="script.js"></script>
   <script>
-    (function () {
-      const waitForSocket = () => {
-        if (!window.socket) { setTimeout(waitForSocket, 100); return; }
-        const latestStats = {};
-        socket.on('stats', ({ viewerIds, viewerCount }) => {
-          const viewerList = document.getElementById('viewerList');
-          const viewerCountInline = document.getElementById('viewerCountInline');
-          const qualityPanel = document.getElementById('qualityPanel');
-          if (!viewerList) return;
-          viewerList.innerHTML = '';
-          if (viewerIds && viewerIds.length > 0) {
-            viewerIds.forEach(id => {
-              const chip = document.createElement('div');
-              chip.className = 'viewer-chip';
-              chip.textContent = id.substring(0, 8);
-              chip.title = id;
-              viewerList.appendChild(chip);
-            });
-            qualityPanel.style.display = 'block';
-          } else {
-            viewerList.innerHTML = '<div class="viewer-empty">No listeners connected yet</div>';
-            qualityPanel.style.display = 'none';
-            qualityPanel.textContent = '';
-          }
-          if (viewerCountInline) viewerCountInline.textContent = viewerCount || 0;
+    (() => {
+      const wait = () => {
+        if (!window.socket) return setTimeout(wait, 100);
+
+        const $ = id => document.getElementById(id);
+        const viewerList = $('viewerList');
+        const viewerCount = $('viewerCountInline');
+        const qualityPanel = $('qualityPanel');
+        const stats = {};
+
+        socket.on('stats', ({ viewerIds = [], viewerCount: count }) => {
+          viewerList.innerHTML = viewerIds.length
+            ? viewerIds.map(id => `<div class="viewer-chip">${id.slice(0, 8)}</div>`).join('')
+            : '<div class="viewer-empty">No listeners connected</div>';
+          qualityPanel.hidden = !viewerIds.length;
+          viewerCount.textContent = count || 0;
         });
-        socket.on('listener-stats', ({ viewerId, rttMs, jitterMs, bitrateKbps, fractionLoss }) => {
-          latestStats[viewerId] = { rttMs, jitterMs, bitrateKbps, fractionLoss, timestamp: Date.now() };
-          renderQuality();
+
+        socket.on('listener-stats', ({ viewerId, rttMs, jitterMs, bitrateKbps }) => {
+          stats[viewerId] = { rttMs, jitterMs, bitrateKbps };
+          const lines = Object.entries(stats).sort().map(([id, s]) => {
+            const q = s.rttMs < 100 && s.jitterMs < 10 ? 'OK' : s.rttMs < 200 ? 'FAIR' : 'POOR';
+            return `[${q}] ${id.slice(0, 8)} | RTT:${s.rttMs}ms Jitter:${s.jitterMs}ms ${s.bitrateKbps}kbps`;
+          });
+          qualityPanel.textContent = lines.join('\n') || 'Waiting...';
         });
-        function renderQuality() {
-          const qualityPanel = document.getElementById('qualityPanel');
-          if (!qualityPanel) return;
-          const lines = Object.entries(latestStats)
-            .sort((a, b) => a[0].localeCompare(b[0]))
-            .map(([id, stats]) => {
-              const shortId = id.substring(0, 8);
-              const quality = getQualityIndicator(stats);
-              return quality + ' ' + shortId + '\n   RTT: ' + stats.rttMs + 'ms | Jitter: ' + stats.jitterMs + 'ms | Bitrate: ' + stats.bitrateKbps + 'kbps | Loss: ' + stats.fractionLoss;
-            });
-          qualityPanel.textContent = lines.length > 0 ? lines.join('\n\n') : 'Waiting for quality metrics...';
-        }
-        function getQualityIndicator(stats) {
-          const rtt = parseFloat(stats.rttMs) || 0;
-          const jitter = parseFloat(stats.jitterMs) || 0;
-          const loss = parseFloat(stats.fractionLoss) || 0;
-          if (rtt < 100 && jitter < 10 && loss < 1) return '✅';
-          if (rtt < 200 && jitter < 20 && loss < 3) return '⚠️';
-          return '🛑';
-        }
       };
-      waitForSocket();
+      wait();
     })();
   </script>
 </body>

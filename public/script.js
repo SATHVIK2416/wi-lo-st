@@ -1,344 +1,438 @@
-// Host control script (cleaned) – functionality unchanged
+/**
+ * Host Control Script - Maximum Audio Quality
+ * Streams system audio via WebRTC with highest possible fidelity
+ */
 (() => {
     'use strict';
 
-    // DOM refs
+    // DOM Cache
     const $ = id => document.getElementById(id);
-    const shareUrlInput = $('shareUrlInput');
-    const copyUrlBtn = $('copyUrl');
-    const listenUrlInput = $('listenUrlInput');
-    const copyListenUrlBtn = $('copyListenUrl');
-    const networkInfo = $('networkAddresses');
-    const startAudioBtn = $('startAudioStream');
-    const stopAudioBtn = $('stopAudioStream');
-    const audioStatus = $('audioStatus');
-    const audioLevelBar = $('audioLevelBar');
-    const audioVisualizer = document.querySelector('.audio-visualizer');
-    const connectionStatus = $('connectionStatus');
-    const clientsCount = $('clientsCount');
-    const notificationEl = $('notification');
-    const latencyInput = $('latencyInput');
-    const bitrateInput = $('bitrateInput');
-    const applyTuningBtn = $('applyTuning');
-    const tuneStatus = $('tuneStatus');
-
-    // State
-    let socket; let mediaStream; let audioContext; let analyser; let isStreaming=false; let audioTrack;
-    const peers = new Map();
-    const senderRegistry = new Map();
-    const pendingViewers = new Set();
-    let desiredLatencyMs = 150; let desiredBitrateKbps = 510; // Max Opus bitrate for music quality
-
-    const setAudioStatus = (message, variant = 'neutral') => {
-        if (!audioStatus) return;
-        audioStatus.textContent = message;
-        audioStatus.classList.remove('pill--neutral', 'pill--accent');
-        audioStatus.classList.add(variant === 'accent' ? 'pill--accent' : 'pill--neutral');
+    const dom = {
+        shareUrl: $('shareUrlInput'),
+        listenUrl: $('listenUrlInput'),
+        copyUrl: $('copyUrl'),
+        copyListenUrl: $('copyListenUrl'),
+        network: $('networkAddresses'),
+        startBtn: $('startAudioStream'),
+        stopBtn: $('stopAudioStream'),
+        status: $('audioStatus'),
+        levelBar: $('audioLevelBar'),
+        visualizer: document.querySelector('.audio-visualizer'),
+        connection: $('connectionStatus'),
+        clients: $('clientsCount'),
+        notification: $('notification'),
+        latency: $('latencyInput'),
+        bitrate: $('bitrateInput'),
+        tuneBtn: $('applyTuning'),
+        tuneStatus: $('tuneStatus')
     };
 
-    document.addEventListener('DOMContentLoaded', () => { initSocket(); loadNetworkInfo(); bindUI(); setAudioStatus('Not streaming', 'neutral'); });
+    // State
+    let socket, mediaStream, audioContext, analyser, processedTrack;
+    let isStreaming = false;
+    const peers = new Map();
+    const pendingViewers = new Set();
 
-    function bindUI(){
-        copyUrlBtn && copyUrlBtn.addEventListener('click', () => copyField(shareUrlInput,'Control page URL copied'));
-        copyListenUrlBtn && copyListenUrlBtn.addEventListener('click', () => copyField(listenUrlInput,'Listener URL copied'));
-        startAudioBtn && startAudioBtn.addEventListener('click', startAudio);
-        stopAudioBtn && stopAudioBtn.addEventListener('click', stopAudio);
-        applyTuningBtn && applyTuningBtn.addEventListener('click', applyTuningToAll);
-    }
+    // Audio Quality Settings - Maximum Quality
+    const AUDIO_CONFIG = {
+        // Opus parameters for maximum quality
+        // stereo=1: Enable stereo
+        // sprop-stereo=1: Signal stereo capability
+        // maxaveragebitrate=510000: Maximum Opus bitrate (510kbps)
+        // maxplaybackrate=48000: Maximum sample rate
+        // cbr=0: Variable bitrate for better quality
+        // useinbandfec=0: Disable forward error correction (adds latency)
+        // usedtx=0: Disable discontinuous transmission (keeps quality constant)
+        opusFmtp: 'minptime=10;stereo=1;sprop-stereo=1;maxaveragebitrate=510000;maxplaybackrate=48000;cbr=0;useinbandfec=0;usedtx=0',
 
-    function initSocket(){
+        // RTP encoding parameters
+        maxBitrate: 510000,  // 510kbps - max for Opus
+
+        // Display media constraints - highest quality audio capture
+        displayMedia: {
+            video: {
+                frameRate: { max: 1 }, // Minimal video
+                width: { ideal: 320 },
+                height: { ideal: 180 }
+            },
+            audio: {
+                // Disable all processing to preserve original audio
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false,
+                // Request highest quality
+                sampleRate: 48000,
+                sampleSize: 16,
+                channelCount: 2  // Stereo
+            }
+        }
+    };
+
+    // Utilities
+    const setStatus = (msg, variant = 'neutral') => {
+        if (!dom.status) return;
+        dom.status.textContent = msg;
+        dom.status.className = `pill pill--${variant === 'accent' ? 'accent' : 'neutral'}`;
+    };
+
+    const notify = (message, type = 'info') => {
+        if (!dom.notification) return;
+        dom.notification.textContent = message;
+        dom.notification.className = `notification ${type} show`;
+        setTimeout(() => dom.notification.classList.remove('show'), 3000);
+    };
+
+    const copyToClipboard = async (el, successMsg) => {
+        if (!el) return;
+        try {
+            await navigator.clipboard.writeText(el.value);
+            notify(successMsg, 'success');
+        } catch {
+            el.select();
+            document.execCommand('copy');
+            notify(successMsg, 'success');
+        }
+    };
+
+    // Socket.IO
+    const initSocket = () => {
         socket = io();
-        socket.on('connect', () => { connectionStatus.textContent='🟢 Connected'; connectionStatus.style.color='#38a169'; });
-        socket.on('disconnect', () => { connectionStatus.textContent='🔴 Disconnected'; connectionStatus.style.color='#e53e3e'; });
-        socket.on('stats', ({ viewerCount }) => { clientsCount.textContent = `👥 ${viewerCount} listening`; });
-        socket.on('viewer-joined', async ({ viewerId }) => { if(!audioTrack){ pendingViewers.add(viewerId); return; } await createPeer(viewerId); });
-        socket.on('webrtc-answer', async ({ sdp, viewerId }) => { const pc = peers.get(viewerId); if(!pc) return; try{ await pc.setRemoteDescription(new RTCSessionDescription(sdp)); }catch(e){ console.error('setRemoteDescription',e);} });
-        socket.on('webrtc-ice-candidate', async ({ candidate, from }) => { const pc = peers.get(from); if(pc && candidate) try{ await pc.addIceCandidate(new RTCIceCandidate(candidate)); }catch(e){ console.warn('ICE add failed',e);} });
-        socket.on('viewer-left', ({ viewerId }) => { const pc = peers.get(viewerId); if(pc){ pc.close(); peers.delete(viewerId); senderRegistry.delete(viewerId);} });
-        socket.emit('register-host');
-    }
 
-    async function loadNetworkInfo(){
+        socket.on('connect', () => {
+            if (dom.connection) {
+                dom.connection.textContent = 'Connected';
+                dom.connection.style.color = '#4ade80';
+            }
+        });
+
+        socket.on('disconnect', () => {
+            if (dom.connection) {
+                dom.connection.textContent = 'Disconnected';
+                dom.connection.style.color = '#f87171';
+            }
+        });
+
+        socket.on('stats', ({ viewerCount }) => {
+            if (dom.clients) dom.clients.textContent = `${viewerCount} listening`;
+        });
+
+        socket.on('viewer-joined', async ({ viewerId }) => {
+            if (!processedTrack) {
+                pendingViewers.add(viewerId);
+                return;
+            }
+            await createPeerConnection(viewerId);
+        });
+
+        socket.on('webrtc-answer', async ({ sdp, viewerId }) => {
+            const pc = peers.get(viewerId);
+            if (pc) {
+                try {
+                    await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+                } catch (e) {
+                    console.error('Failed to set remote description:', e);
+                }
+            }
+        });
+
+        socket.on('webrtc-ice-candidate', async ({ candidate, from }) => {
+            const pc = peers.get(from);
+            if (pc && candidate) {
+                try {
+                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                } catch (e) {
+                    console.warn('Failed to add ICE candidate:', e);
+                }
+            }
+        });
+
+        socket.on('viewer-left', ({ viewerId }) => {
+            const pc = peers.get(viewerId);
+            if (pc) {
+                pc.close();
+                peers.delete(viewerId);
+            }
+        });
+
+        socket.emit('register-host');
+    };
+
+    // Network Info
+    const loadNetworkInfo = async () => {
         try {
             const res = await fetch('/network-info');
             const data = await res.json();
-            let html = `<div class="network-address"><strong>Local:</strong> ${data.localUrl}</div>`;
-            data.addresses.forEach(a => { html += `<div class="network-address"><strong>${a.interface}:</strong> ${a.url}</div>`; });
-            networkInfo.innerHTML = html;
+
+            const html = [`<div class="network-address"><strong>Local:</strong> ${data.localUrl}</div>`];
+            data.addresses.forEach(a => {
+                html.push(`<div class="network-address"><strong>${a.interface}:</strong> ${a.url}</div>`);
+            });
+            if (dom.network) dom.network.innerHTML = html.join('');
+
             const shareUrl = data.addresses[0]?.url || data.localUrl;
-            shareUrlInput && (shareUrlInput.value = shareUrl);
-            listenUrlInput && (listenUrlInput.value = shareUrl + '/listen');
-        } catch(e){ networkInfo.innerHTML = '<div class="network-address"><strong>Error:</strong> Could not load network information</div>'; }
-    }
-
-    function copyField(el,msg){ if(!el) return; el.select(); el.setSelectionRange(0,99999); try{ document.execCommand('copy'); notify(msg,'success'); }catch{ notify('Copy failed','error'); } }
-    function notify(message,type='info'){ if(!notificationEl) return; notificationEl.textContent=message; notificationEl.className=`notification ${type} show`; setTimeout(()=>notificationEl.classList.remove('show'),2500); }
-
-    async function startAudio(){
-        try {
-            mediaStream = await navigator.mediaDevices.getDisplayMedia({ 
-                video:{ frameRate:{ ideal:5,max:10 }, width:{ ideal:640 }, height:{ ideal:360 } }, 
-                audio:{ 
-                    echoCancellation:false, 
-                    noiseSuppression:false, 
-                    autoGainControl:false, 
-                    suppressLocalAudioPlayback:false, 
-                    sampleRate:{ ideal:48000 }, 
-                    sampleSize:{ ideal:16 }, 
-                    channelCount:{ ideal:2 } 
-                } 
-            });
-            
-            const audioTracks = mediaStream.getAudioTracks();
-            if(!audioTracks.length) throw new Error('No audio track available. Ensure "Share audio" is checked.');
-            
-            // Create audio context with high quality settings
-            audioContext = new (window.AudioContext||window.webkitAudioContext)({ 
-                latencyHint: 'playback',
-                sampleRate: 48000 
-            });
-            
-            // Source from captured audio
-            const originalStream = new MediaStream([audioTracks[0]]);
-            const source = audioContext.createMediaStreamSource(originalStream);
-            
-            // Create multi-band EQ for enhanced bass and treble
-            // Low shelf - boost bass (20-250 Hz)
-            const bassBoost = audioContext.createBiquadFilter();
-            bassBoost.type = 'lowshelf';
-            bassBoost.frequency.value = 200;
-            bassBoost.gain.value = 8; // +8dB bass boost
-            
-            // High shelf - boost treble (8kHz-20kHz)
-            const trebleBoost = audioContext.createBiquadFilter();
-            trebleBoost.type = 'highshelf';
-            trebleBoost.frequency.value = 8000;
-            trebleBoost.gain.value = 6; // +6dB treble boost
-            
-            // Mid presence boost (2-4kHz) for clarity
-            const presenceBoost = audioContext.createBiquadFilter();
-            presenceBoost.type = 'peaking';
-            presenceBoost.frequency.value = 3000;
-            presenceBoost.Q.value = 1.5;
-            presenceBoost.gain.value = 4; // +4dB presence
-            
-            // Compressor to maintain dynamic range
-            const compressor = audioContext.createDynamicsCompressor();
-            compressor.threshold.value = -20;
-            compressor.knee.value = 10;
-            compressor.ratio.value = 4;
-            compressor.attack.value = 0.003;
-            compressor.release.value = 0.25;
-            
-            // Gain node for overall level control
-            const gainNode = audioContext.createGain();
-            gainNode.gain.value = 1.2; // Slight overall boost
-            
-            // Connect audio processing chain
-            source.connect(bassBoost);
-            bassBoost.connect(presenceBoost);
-            presenceBoost.connect(trebleBoost);
-            trebleBoost.connect(compressor);
-            compressor.connect(gainNode);
-            
-            // Create destination for streaming
-            const destination = audioContext.createMediaStreamDestination();
-            gainNode.connect(destination);
-            
-            // Also connect to analyser for visualization
-            analyser = audioContext.createAnalyser();
-            analyser.fftSize = 512;
-            gainNode.connect(analyser);
-            
-            // Use the processed audio track for WebRTC
-            audioTrack = destination.stream.getAudioTracks()[0];
-            
-            console.log('Audio processing chain active: Bass +8dB, Treble +6dB, Presence +4dB');
-            
-            try { 
-                mediaStream.getVideoTracks().forEach(v=>v.applyConstraints({ 
-                    frameRate:{ max:5 }, 
-                    width:{ ideal:320 }, 
-                    height:{ ideal:180 } 
-                })); 
-            } catch(_){ }
-            
-            if(pendingViewers.size){ 
-                for(const id of pendingViewers) await createPeer(id); 
-                pendingViewers.clear(); 
-            }
-            
-            isStreaming=true; 
-            startAudioBtn.style.display='none'; 
-            stopAudioBtn.style.display='inline-flex'; 
-            setAudioStatus('🔊 Streaming with EQ enhancement...', 'accent');
-            audioVisualizer && audioVisualizer.classList.add('is-active');
-            
-            visualizeLevel(); 
-            notify('High-fidelity audio streaming active','success'); 
-            socket.emit('announce-streaming');
-            
-            mediaStream.getVideoTracks().forEach(t=> t.onended = () => stopAudio());
-            originalStream.getAudioTracks().forEach(t=> t.onended = () => stopAudio());
-        } catch(e){
-            const msg = e?.name==='NotAllowedError' ? 'Screen sharing denied.' : (e.message.includes('No audio track') ? 'No audio track – check the Share audio box.' : 'Failed to start: '+e.message);
-            audioVisualizer && audioVisualizer.classList.remove('is-active');
-            notify(msg,'error');
+            if (dom.shareUrl) dom.shareUrl.value = shareUrl;
+            if (dom.listenUrl) dom.listenUrl.value = `${shareUrl}/listen`;
+        } catch {
+            if (dom.network) dom.network.innerHTML = '<div class="network-address">Failed to load network info</div>';
         }
-    }
+    };
 
-    function stopAudio(){
-        if(mediaStream){ mediaStream.getTracks().forEach(t=>{ try{ t.stop(); }catch(_){} }); mediaStream=null; }
-        if(audioContext){ audioContext.close(); audioContext=null; }
-        isStreaming=false; startAudioBtn.style.display='inline-flex'; stopAudioBtn.style.display='none'; setAudioStatus('🔇 System audio not shared', 'neutral'); audioLevelBar.style.width='0%'; audioVisualizer && audioVisualizer.classList.remove('is-active');
-        peers.forEach(pc=>pc.close()); peers.clear(); audioTrack=null; pendingViewers.clear(); senderRegistry.clear(); 
-        socket.emit('host-stopped-streaming'); // Notify server that streaming stopped
-        notify('System audio streaming stopped','info');
-    }
+    // Start Audio Stream
+    const startAudio = async () => {
+        try {
+            // Get display media with audio
+            mediaStream = await navigator.mediaDevices.getDisplayMedia(AUDIO_CONFIG.displayMedia);
 
-    function visualizeLevel(){ if(!analyser||!isStreaming) return; const len=analyser.frequencyBinCount; const data=new Uint8Array(len); (function loop(){ if(!isStreaming) return; analyser.getByteFrequencyData(data); const avg=data.reduce((s,v)=>s+v,0)/len; audioLevelBar.style.width=((avg/255)*100)+'%'; requestAnimationFrame(loop); })(); }
-
-    async function createPeer(viewerId){ 
-        if(!audioTrack) return; 
-        const pc = new RTCPeerConnection({ 
-            iceServers:[{ urls:'stun:stun.l.google.com:19302' }],
-            sdpSemantics: 'unified-plan'
-        }); 
-        peers.set(viewerId, pc); 
-        
-        pc.onicecandidate = e=>{ 
-            if(e.candidate) socket.emit('webrtc-ice-candidate',{ targetId:viewerId, candidate:e.candidate }); 
-        }; 
-        
-        pc.onconnectionstatechange=()=>{ 
-            if(['failed','disconnected','closed'].includes(pc.connectionState)){ 
-                pc.close(); 
-                peers.delete(viewerId); 
-                if(audioTrack && pc.connectionState==='failed'){ 
-                    setTimeout(()=>{ if(audioTrack && !peers.has(viewerId)) createPeer(viewerId); },1000); 
-                } 
-            } 
-        }; 
-        
-        const outboundStream = new MediaStream([audioTrack]); 
-        const sender = pc.addTrack(audioTrack, outboundStream); 
-        senderRegistry.set(viewerId, sender); 
-        
-        // Configure Opus for high-quality music (stereo, full bandwidth)
-        try{ 
-            if(RTCRtpSender.getCapabilities){ 
-                const caps=RTCRtpSender.getCapabilities('audio'); 
-                if(caps&&caps.codecs){ 
-                    // Find stereo Opus with highest sample rate
-                    const opusStereo = caps.codecs.find(c => 
-                        c.mimeType === 'audio/opus' && 
-                        c.sdpFmtpLine && 
-                        c.sdpFmtpLine.includes('stereo=1')
-                    );
-                    const opusAny = caps.codecs.filter(c=>c.mimeType === 'audio/opus');
-                    const others=caps.codecs.filter(c=>c.mimeType !== 'audio/opus');
-                    
-                    // Prefer stereo Opus, then any Opus, then others
-                    const ordered = opusStereo ? [opusStereo, ...opusAny, ...others] : [...opusAny, ...others];
-                    
-                    const tx=pc.getTransceivers().find(t=>t.sender===sender); 
-                    if(tx&&tx.setCodecPreferences) tx.setCodecPreferences(ordered); 
-                } 
+            const audioTracks = mediaStream.getAudioTracks();
+            if (!audioTracks.length) {
+                throw new Error('No audio track - make sure to check "Share audio" when selecting screen');
             }
-        }catch(e){ console.warn('Codec preference failed:', e); }
-        
-        tuneSender(sender); 
-        
-        const tx=pc.getTransceivers().find(t=>t.sender&&t.sender.track===audioTrack); 
-        if(tx){ 
-            try{ tx.direction='sendonly'; }catch(_){} 
-        } 
-        
-        // Create offer with high-quality audio constraints
+
+            // Create audio context for visualization
+            audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                sampleRate: 48000,
+                latencyHint: 'playback'
+            });
+
+            // Set up audio processing chain
+            const source = audioContext.createMediaStreamSource(new MediaStream([audioTracks[0]]));
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 256;
+
+            // Create destination for processed audio
+            const destination = audioContext.createMediaStreamDestination();
+
+            // Connect: source -> analyser -> destination (no EQ, preserve original)
+            source.connect(analyser);
+            analyser.connect(destination);
+
+            processedTrack = destination.stream.getAudioTracks()[0];
+
+            // Minimize video overhead
+            mediaStream.getVideoTracks().forEach(v => {
+                try {
+                    v.applyConstraints({ frameRate: { max: 1 } });
+                } catch { }
+            });
+
+            // Handle track end
+            const onTrackEnd = () => stopAudio();
+            audioTracks[0].onended = onTrackEnd;
+            mediaStream.getVideoTracks().forEach(v => v.onended = onTrackEnd);
+
+            // Connect pending viewers
+            for (const viewerId of pendingViewers) {
+                await createPeerConnection(viewerId);
+            }
+            pendingViewers.clear();
+
+            // Update UI
+            isStreaming = true;
+            if (dom.startBtn) dom.startBtn.hidden = true;
+            if (dom.stopBtn) dom.stopBtn.hidden = false;
+            setStatus('LIVE', 'accent');
+            dom.visualizer?.classList.add('is-active');
+
+            visualize();
+            notify('Streaming at maximum quality (510kbps stereo)', 'success');
+            socket.emit('announce-streaming');
+
+        } catch (e) {
+            console.error('Start audio failed:', e);
+            let msg = 'Failed to start streaming';
+            if (e.name === 'NotAllowedError') msg = 'Screen sharing was denied';
+            else if (e.message.includes('No audio')) msg = e.message;
+            notify(msg, 'error');
+        }
+    };
+
+    // Stop Audio Stream
+    const stopAudio = () => {
+        if (mediaStream) {
+            mediaStream.getTracks().forEach(t => t.stop());
+            mediaStream = null;
+        }
+
+        if (audioContext) {
+            audioContext.close();
+            audioContext = null;
+        }
+
+        processedTrack = null;
+        isStreaming = false;
+
+        peers.forEach(pc => pc.close());
+        peers.clear();
+        pendingViewers.clear();
+
+        if (dom.startBtn) dom.startBtn.hidden = false;
+        if (dom.stopBtn) dom.stopBtn.hidden = true;
+        if (dom.levelBar) dom.levelBar.style.width = '0%';
+        dom.visualizer?.classList.remove('is-active');
+        setStatus('OFFLINE', 'neutral');
+
+        socket.emit('host-stopped-streaming');
+        notify('Stream stopped');
+    };
+
+    // Audio Level Visualization
+    const visualize = () => {
+        if (!analyser || !isStreaming) return;
+
+        const data = new Uint8Array(analyser.frequencyBinCount);
+
+        const loop = () => {
+            if (!isStreaming) return;
+
+            analyser.getByteFrequencyData(data);
+            let sum = 0;
+            for (let i = 0; i < data.length; i++) sum += data[i];
+            const avg = sum / data.length;
+
+            if (dom.levelBar) dom.levelBar.style.width = `${(avg / 255) * 100}%`;
+
+            requestAnimationFrame(loop);
+        };
+
+        requestAnimationFrame(loop);
+    };
+
+    // WebRTC Peer Connection with Maximum Quality Settings
+    const createPeerConnection = async (viewerId) => {
+        if (!processedTrack) return;
+
+        const pc = new RTCPeerConnection({
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        });
+
+        peers.set(viewerId, pc);
+
+        pc.onicecandidate = e => {
+            if (e.candidate) {
+                socket.emit('webrtc-ice-candidate', { targetId: viewerId, candidate: e.candidate });
+            }
+        };
+
+        pc.onconnectionstatechange = () => {
+            const state = pc.connectionState;
+            if (state === 'failed' || state === 'disconnected' || state === 'closed') {
+                pc.close();
+                peers.delete(viewerId);
+            }
+        };
+
+        // Add the audio track
+        const sender = pc.addTrack(processedTrack, new MediaStream([processedTrack]));
+
+        // Configure sender for maximum quality
+        try {
+            const params = sender.getParameters();
+            if (!params.encodings || params.encodings.length === 0) {
+                params.encodings = [{}];
+            }
+
+            // Set maximum bitrate
+            params.encodings[0].maxBitrate = AUDIO_CONFIG.maxBitrate;
+            params.encodings[0].priority = 'high';
+            params.encodings[0].networkPriority = 'high';
+
+            await sender.setParameters(params);
+        } catch (e) {
+            console.warn('Could not set sender parameters:', e);
+        }
+
+        // Set preferred codecs (Opus stereo first)
+        try {
+            const transceiver = pc.getTransceivers().find(t => t.sender === sender);
+            if (transceiver) {
+                transceiver.direction = 'sendonly';
+
+                if (RTCRtpSender.getCapabilities) {
+                    const caps = RTCRtpSender.getCapabilities('audio');
+                    if (caps?.codecs) {
+                        // Prefer Opus with stereo
+                        const opusCodecs = caps.codecs.filter(c => c.mimeType === 'audio/opus');
+                        const otherCodecs = caps.codecs.filter(c => c.mimeType !== 'audio/opus');
+
+                        if (transceiver.setCodecPreferences) {
+                            transceiver.setCodecPreferences([...opusCodecs, ...otherCodecs]);
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('Could not set codec preferences:', e);
+        }
+
+        // Create offer
         const offer = await pc.createOffer({
             offerToReceiveAudio: false,
             offerToReceiveVideo: false,
             voiceActivityDetection: false
         });
-        
-        // Modify SDP to force stereo, full bandwidth, and disable packet loss concealment
+
+        // Enhance SDP for maximum Opus quality
         offer.sdp = enhanceOpusSDP(offer.sdp);
-        
-        await pc.setLocalDescription(offer); 
-        socket.emit('webrtc-offer',{ viewerId, sdp:offer }); 
-    }
-    
-    function enhanceOpusSDP(sdp) {
-        // Split SDP into lines
+
+        await pc.setLocalDescription(offer);
+        socket.emit('webrtc-offer', { viewerId, sdp: offer });
+    };
+
+    // Enhance SDP to set Opus to maximum quality
+    const enhanceOpusSDP = (sdp) => {
         const lines = sdp.split('\r\n');
-        let opusPayloadType = null;
-        
+        const result = [];
+        let opusPayload = null;
+
         // Find Opus payload type
         for (const line of lines) {
             if (line.includes('opus/48000/2')) {
                 const match = line.match(/rtpmap:(\d+)/);
-                if (match) opusPayloadType = match[1];
-                break;
+                if (match) opusPayload = match[1];
             }
         }
-        
-        if (!opusPayloadType) return sdp;
-        
-        // Enhance SDP for music quality
-        const enhanced = [];
-        let foundFmtp = false;
-        
-        for (let line of lines) {
-            // Update existing fmtp line for Opus
-            if (line.startsWith(`a=fmtp:${opusPayloadType}`)) {
-                foundFmtp = true;
-                // Force stereo, max bitrate, full bandwidth, disable FEC/DTX for quality
-                line = `a=fmtp:${opusPayloadType} minptime=10; useinbandfec=0; stereo=1; sprop-stereo=1; maxaveragebitrate=510000; maxplaybackrate=48000; cbr=0; usedtx=0; complexity=10`;
-            }
-            enhanced.push(line);
-            
-            // Add fmtp if it doesn't exist
-            if (!foundFmtp && line.includes(`rtpmap:${opusPayloadType} opus/48000`)) {
-                enhanced.push(`a=fmtp:${opusPayloadType} minptime=10; useinbandfec=0; stereo=1; sprop-stereo=1; maxaveragebitrate=510000; maxplaybackrate=48000; cbr=0; usedtx=0; complexity=10`);
-                foundFmtp = true;
-            }
-        }
-        
-        return enhanced.join('\r\n');
-    }
 
-    function tuneSender(sender){ 
-        if(!sender) return; 
-        try{ 
-            const params=sender.getParameters(); 
-            if(!params.encodings) params.encodings=[{}]; 
-            const enc=params.encodings[0]; 
-            
-            // High bitrate for music quality
-            enc.maxBitrate=Math.round(desiredBitrateKbps*1000); 
-            enc.minBitrate=Math.round(desiredBitrateKbps*1000*0.9); // Higher minimum
-            enc.networkPriority='high'; 
-            enc.priority='high'; 
-            
-            const target=desiredLatencyMs; 
-            let ptime=20; 
-            if(target<=140) ptime=10; 
-            else if(target>=300) ptime=40; 
-            enc.ptime=ptime; 
-            enc.dtx=false; // Disable discontinuous transmission for music
-            
-            sender.setParameters(params).catch(e=>console.warn('setParameters failed:', e)); 
-            tuneStatus && (tuneStatus.textContent=`Target: ${desiredLatencyMs}ms / ${desiredBitrateKbps}kbps (ptime ${ptime}ms) • HiFi Mode`);
-        }catch(e){
-            console.error('tuneSender error:', e);
-        }
-    }
-    
-    function applyTuningToAll(){ 
-        if(latencyInput) desiredLatencyMs=Math.max(80,Math.min(800,parseInt(latencyInput.value)||150)); 
-        if(bitrateInput) desiredBitrateKbps=Math.max(128,Math.min(510,parseInt(bitrateInput.value)||510)); // Allow up to 510kbps
-        senderRegistry.forEach(s=>tuneSender(s)); 
-        notify('Applied new tuning - Quality: ' + desiredBitrateKbps + 'kbps','info'); 
-    }
+        if (!opusPayload) return sdp;
 
+        // Build new SDP with enhanced Opus parameters
+        let addedFmtp = false;
+        for (const line of lines) {
+            if (line.startsWith(`a=fmtp:${opusPayload}`)) {
+                // Replace existing fmtp line with our high-quality settings
+                result.push(`a=fmtp:${opusPayload} ${AUDIO_CONFIG.opusFmtp}`);
+                addedFmtp = true;
+            } else {
+                result.push(line);
+                // Add fmtp after rtpmap if not already present
+                if (!addedFmtp && line.includes(`rtpmap:${opusPayload} opus`)) {
+                    result.push(`a=fmtp:${opusPayload} ${AUDIO_CONFIG.opusFmtp}`);
+                    addedFmtp = true;
+                }
+            }
+        }
+
+        return result.join('\r\n');
+    };
+
+    // UI Event Bindings
+    const bindUI = () => {
+        dom.copyUrl?.addEventListener('click', () => copyToClipboard(dom.shareUrl, 'Console URL copied'));
+        dom.copyListenUrl?.addEventListener('click', () => copyToClipboard(dom.listenUrl, 'Listener URL copied'));
+        dom.startBtn?.addEventListener('click', startAudio);
+        dom.stopBtn?.addEventListener('click', stopAudio);
+    };
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+        initSocket();
+        loadNetworkInfo();
+        bindUI();
+        setStatus('OFFLINE', 'neutral');
+    });
+
+    // Expose socket for inline scripts
+    Object.defineProperty(window, 'socket', {
+        get: () => socket,
+        configurable: true
+    });
 })();

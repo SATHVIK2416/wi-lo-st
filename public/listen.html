@@ -2,162 +2,337 @@
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Live Audio Share · Listener</title>
-    <script src="/socket.io/socket.io.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Listen to live audio stream">
+    <title>Live Audio Share</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 
 <body class="listener-page">
     <div class="container">
-        <div class="page-header">
-            <div class="eyebrow" id="audioStatus">Waiting...</div>
-            <h1>Live Listener</h1>
-            <p>High-fidelity low latency audio stream</p>
-        </div>
+        <header class="page-header">
+            <span class="eyebrow" id="audioStatus">Waiting</span>
+            <h1>Audio Stream</h1>
+            <p>High fidelity stereo audio</p>
+        </header>
 
         <div id="audioVisualizer" class="visualizer-bars"></div>
 
-        <div class="controls" style="flex-direction: column; width: 100%; max-width: 320px; margin: 0 auto;">
-            <button id="enableAudio" class="btn btn-primary" style="width: 100%; justify-content: center;">Enable Audio
-                Stream</button>
-            <button id="muteAudio" class="btn btn-secondary"
-                style="width: 100%; display:none; justify-content: center;">Mute Audio</button>
-
-            <div class="volume-control"
-                style="width: 100%; display: flex; align-items: center; gap: 12px; margin-top: 16px;">
-                <span class="btn-icon">🔊</span>
-                <input id="volumeSlider" type="range" min="0" max="100" value="100" />
+        <div class="controls" style="flex-direction:column;width:100%;gap:12px">
+            <button id="enableAudio" class="btn btn-primary" style="width:100%;justify-content:center">
+                Enable Audio
+            </button>
+            <button id="muteAudio" class="btn btn-secondary" style="width:100%;justify-content:center" hidden>
+                Mute
+            </button>
+            <div style="width:100%;display:flex;align-items:center;gap:12px;margin-top:8px">
+                <span style="font-size:0.8rem;color:#909090">VOL</span>
+                <input id="volumeSlider" type="range" min="0" max="100" value="100">
+                <span id="volumeDisplay" style="font-size:0.8rem;color:#909090;min-width:40px">100%</span>
             </div>
-            <div id="volumeDisplay" style="font-size: 0.8rem; color: var(--text-tertiary);">100%</div>
         </div>
 
-        <div style="text-align: center; margin-top: 32px;">
-            <div id="connectionStatus" style="font-size: 0.8rem; color: var(--text-secondary);">Connecting...</div>
-            <div id="clientsCount" style="font-size: 0.75rem; color: var(--text-tertiary);">0 listeners</div>
+        <footer style="text-align:center;margin-top:40px">
+            <div id="connectionStatus" style="font-size:0.8rem;color:#aaa">Connecting...</div>
+            <div id="clientsCount" style="font-size:0.75rem;color:#909090;margin-top:4px">0 listeners</div>
             <div id="qualityStats"
-                style="font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; color: var(--text-tertiary); margin-top: 8px;">
-            </div>
-        </div>
+                style="font-family:'Roboto Mono',monospace;font-size:0.7rem;color:#909090;margin-top:12px"></div>
+        </footer>
     </div>
+
     <div id="notification" class="notification"></div>
 
+    <script src="/socket.io/socket.io.js"></script>
     <script>
-        let socket, pc, audioEl, hostIdRef = null; const bars = []; let muted = false, volume = 1.0;
-        const qs = id => document.getElementById(id);
-        const audioStatus = qs('audioStatus'), connectionStatus = qs('connectionStatus'), clientsCount = qs('clientsCount'), vis = qs('audioVisualizer'), volumeSlider = qs('volumeSlider'), volumeDisplay = qs('volumeDisplay'), enableBtn = qs('enableAudio'), muteBtn = qs('muteAudio'), note = qs('notification'), qualityStats = qs('qualityStats');
+        (() => {
+            'use strict';
 
-        const setStatus = (msg, type) => {
-            audioStatus.textContent = msg;
-            // Map old classes to new CSS logic or just text
-            if (type === 'error') audioStatus.style.color = 'var(--danger)';
-            else if (type === 'live') audioStatus.style.color = 'var(--success)';
-            else audioStatus.style.color = 'var(--accent-glow)';
-        };
-
-        document.addEventListener('DOMContentLoaded', () => { initBars(); initSocket(); bindUi(); });
-
-        function initBars() {
-            vis.innerHTML = '';
-            for (let i = 0; i < 20; i++) {
-                const b = document.createElement('div');
-                b.className = 'bar';
-                vis.appendChild(b);
-                bars.push(b);
-            }
-        }
-
-        function bindUi() {
-            volumeSlider.addEventListener('input', () => {
-                volume = volumeSlider.value / 100;
-                volumeDisplay.textContent = volumeSlider.value + '%';
-                if (audioEl) audioEl.volume = volume;
-            });
-            enableBtn.addEventListener('click', joinStream);
-            muteBtn.addEventListener('click', toggleMute);
-        }
-
-        function initSocket() {
-            socket = io();
-            socket.on('connect', () => { connectionStatus.textContent = 'Connected'; connectionStatus.style.color = 'var(--success)'; });
-            socket.on('disconnect', () => { connectionStatus.textContent = 'Disconnected'; connectionStatus.style.color = 'var(--danger)'; setStatus('Disconnected', 'error'); teardown(); });
-            socket.on('no-host', () => { setStatus('No host', 'error'); flash('No host streaming'); enableBtn.style.display = 'block'; });
-            socket.on('host-left', () => { setStatus('Host left', 'error'); teardown(); });
-            socket.on('host-stopped', () => { setStatus('Host stopped', ''); teardown(); });
-            socket.on('host-streaming', () => { if (enableBtn.style.display === 'none') socket.emit('viewer-join'); });
-            socket.on('webrtc-offer', async ({ sdp, hostId }) => { hostIdRef = hostId; await ensurePeer(); await pc.setRemoteDescription(new RTCSessionDescription(sdp)); const answer = await pc.createAnswer(); await pc.setLocalDescription(answer); socket.emit('webrtc-answer', { hostId, sdp: answer }); });
-            socket.on('webrtc-ice-candidate', ({ candidate, from }) => { if (pc && candidate && from === hostIdRef) pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => { }); });
-            socket.on('stats', ({ viewerCount }) => { if (clientsCount) clientsCount.textContent = `${viewerCount} listeners`; });
-        }
-
-        async function joinStream() { enableBtn.style.display = 'none'; muteBtn.style.display = 'block'; setStatus('Joining...', ''); socket.emit('viewer-join'); }
-
-        async function ensurePeer() {
-            if (pc) return;
-            pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-            pc.onicecandidate = e => { if (e.candidate && hostIdRef) socket.emit('webrtc-ice-candidate', { targetId: hostIdRef, candidate: e.candidate }); };
-            pc.ontrack = e => {
-                if (!audioEl) { audioEl = document.createElement('audio'); audioEl.autoplay = true; audioEl.playsInline = true; audioEl.controls = false; audioEl.style.display = 'none'; audioEl.volume = volume; document.body.appendChild(audioEl); }
-                audioEl.srcObject = e.streams[0];
-                audioEl.play().catch(() => { setStatus('Tap Enable', 'error'); });
-                setStatus('Live Audio', 'live');
-                animate();
+            const $ = id => document.getElementById(id);
+            const dom = {
+                status: $('audioStatus'),
+                connection: $('connectionStatus'),
+                clients: $('clientsCount'),
+                visualizer: $('audioVisualizer'),
+                volume: $('volumeSlider'),
+                volumeDisplay: $('volumeDisplay'),
+                enableBtn: $('enableAudio'),
+                muteBtn: $('muteAudio'),
+                notification: $('notification'),
+                qualityStats: $('qualityStats')
             };
-            pc.onconnectionstatechange = () => { if (['failed', 'disconnected', 'closed'].includes(pc.connectionState)) teardown(); };
-        }
 
-        function toggleMute() { muted = !muted; if (audioEl) audioEl.muted = muted; muteBtn.textContent = muted ? 'Unmute' : 'Mute'; }
+            let socket, pc, audioEl, audioContext, analyser, hostId = null;
+            let muted = false, volume = 1;
+            const bars = [];
 
-        function teardown() {
-            if (pc) { pc.close(); pc = null; }
-            if (audioEl) { audioEl.srcObject = null; audioEl.remove(); audioEl = null; }
-            bars.forEach(b => b.style.height = '4px');
-            enableBtn.style.display = 'block';
-            muteBtn.style.display = 'none';
-            setStatus('Waiting...', '');
-        }
-
-        function animate() {
-            const step = () => {
-                if (!pc || !audioEl || audioEl.paused) return;
-                bars.forEach(b => { b.style.height = (Math.random() * 100) + '%'; });
-                requestAnimationFrame(step);
+            const setStatus = (msg, type) => {
+                dom.status.textContent = msg;
+                dom.status.style.color = type === 'error' ? '#f87171' : type === 'live' ? '#4ade80' : '#fff';
             };
-            requestAnimationFrame(step);
-            updateStatsLoop();
-        }
 
-        async function updateStatsLoop() {
-            if (!pc) return;
-            try {
-                const stats = await pc.getStats();
-                let jitter = '-', rtt = '-', bitrate = '-', loss = '-';
-                let inboundRtp; let prevBytes = updateStatsLoop._prevBytes || 0; let prevTime = updateStatsLoop._prevTime || performance.now();
-                const now = performance.now();
+            const flash = msg => {
+                dom.notification.textContent = msg;
+                dom.notification.classList.add('show');
+                setTimeout(() => dom.notification.classList.remove('show'), 3000);
+            };
 
-                stats.forEach(r => {
-                    if (r.type === 'remote-inbound-rtp' && r.kind === 'audio') { if (r.jitter) jitter = (r.jitter * 1000).toFixed(1); }
-                    if (r.type === 'inbound-rtp' && r.kind === 'audio') { inboundRtp = r; }
-                    if (r.type === 'candidate-pair' && r.currentRoundTripTime !== undefined && r.nominated) rtt = (r.currentRoundTripTime * 1000).toFixed(0);
-                });
+            // Enhance SDP for maximum Opus quality
+            const enhanceOpusSDP = (sdp) => {
+                const opusFmtp = 'minptime=10;stereo=1;sprop-stereo=1;maxaveragebitrate=510000;maxplaybackrate=48000;cbr=0;useinbandfec=0;usedtx=0';
+                const lines = sdp.split('\r\n');
+                const result = [];
+                let opusPayload = null;
 
-                if (inboundRtp && inboundRtp.bytesReceived != null) {
-                    const bytes = inboundRtp.bytesReceived;
-                    const deltaBytes = bytes - prevBytes;
-                    const deltaTime = now - prevTime;
-                    if (deltaTime > 0) bitrate = ((deltaBytes * 8) / deltaTime).toFixed(0);
-                    updateStatsLoop._prevBytes = bytes;
-                    updateStatsLoop._prevTime = now;
+                for (const line of lines) {
+                    if (line.includes('opus/48000/2')) {
+                        const match = line.match(/rtpmap:(\d+)/);
+                        if (match) opusPayload = match[1];
+                    }
                 }
 
-                qualityStats.textContent = `RTT: ${rtt}ms | Jitter: ${jitter}ms | ${bitrate}kbps`;
-                socket.emit('listener-stats', { rttMs: rtt, jitterMs: jitter, bitrateKbps: bitrate, fractionLoss: 0 });
-            } catch (_) { }
-            setTimeout(updateStatsLoop, 1000);
-        }
+                if (!opusPayload) return sdp;
 
-        function flash(msg) { note.textContent = msg; note.classList.add('show'); setTimeout(() => note.classList.remove('show'), 2500); }
+                let addedFmtp = false;
+                for (const line of lines) {
+                    if (line.startsWith(`a=fmtp:${opusPayload}`)) {
+                        result.push(`a=fmtp:${opusPayload} ${opusFmtp}`);
+                        addedFmtp = true;
+                    } else {
+                        result.push(line);
+                        if (!addedFmtp && line.includes(`rtpmap:${opusPayload} opus`)) {
+                            result.push(`a=fmtp:${opusPayload} ${opusFmtp}`);
+                            addedFmtp = true;
+                        }
+                    }
+                }
+
+                return result.join('\r\n');
+            };
+
+            const initBars = () => {
+                dom.visualizer.innerHTML = '';
+                for (let i = 0; i < 32; i++) {
+                    const bar = document.createElement('div');
+                    bar.className = 'bar';
+                    dom.visualizer.appendChild(bar);
+                    bars.push(bar);
+                }
+            };
+
+            const initSocket = () => {
+                socket = io();
+
+                socket.on('connect', () => {
+                    dom.connection.textContent = 'Connected';
+                    dom.connection.style.color = '#4ade80';
+                });
+
+                socket.on('disconnect', () => {
+                    dom.connection.textContent = 'Disconnected';
+                    dom.connection.style.color = '#f87171';
+                    setStatus('Disconnected', 'error');
+                    teardown();
+                });
+
+                socket.on('no-host', () => {
+                    setStatus('No host', 'error');
+                    flash('No host streaming');
+                    dom.enableBtn.hidden = false;
+                });
+
+                socket.on('host-left', () => { setStatus('Host left', 'error'); teardown(); });
+                socket.on('host-stopped', () => { setStatus('Stopped', ''); teardown(); });
+                socket.on('host-streaming', () => { if (dom.enableBtn.hidden) socket.emit('viewer-join'); });
+
+                socket.on('webrtc-offer', async ({ sdp, hostId: hid }) => {
+                    hostId = hid;
+                    await setupPeerConnection();
+
+                    // Enhance the incoming offer SDP
+                    const enhancedOffer = enhanceOpusSDP(sdp);
+                    await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: enhancedOffer }));
+
+                    const answer = await pc.createAnswer();
+
+                    // Enhance the answer SDP to request maximum quality
+                    answer.sdp = enhanceOpusSDP(answer.sdp);
+
+                    await pc.setLocalDescription(answer);
+                    socket.emit('webrtc-answer', { hostId, sdp: answer });
+                });
+
+                socket.on('webrtc-ice-candidate', ({ candidate, from }) => {
+                    if (pc && candidate && from === hostId) {
+                        pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => { });
+                    }
+                });
+
+                socket.on('stats', ({ viewerCount }) => {
+                    dom.clients.textContent = `${viewerCount} listeners`;
+                });
+            };
+
+            const setupPeerConnection = async () => {
+                if (pc) return;
+
+                pc = new RTCPeerConnection({
+                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                });
+
+                pc.onicecandidate = e => {
+                    if (e.candidate && hostId) {
+                        socket.emit('webrtc-ice-candidate', { targetId: hostId, candidate: e.candidate });
+                    }
+                };
+
+                pc.ontrack = e => {
+                    const stream = e.streams[0];
+
+                    // Create audio element
+                    if (!audioEl) {
+                        audioEl = document.createElement('audio');
+                        audioEl.autoplay = true;
+                        audioEl.playsInline = true;
+                        document.body.appendChild(audioEl);
+                    }
+
+                    audioEl.srcObject = stream;
+                    audioEl.volume = volume;
+
+                    // Create audio context for visualization
+                    if (!audioContext) {
+                        audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                            sampleRate: 48000
+                        });
+                        analyser = audioContext.createAnalyser();
+                        analyser.fftSize = 64;
+
+                        const source = audioContext.createMediaStreamSource(stream);
+                        source.connect(analyser);
+                        // Don't connect to destination - audio element handles playback
+                    }
+
+                    audioEl.play().catch(() => setStatus('Tap to enable', 'error'));
+                    setStatus('LIVE', 'live');
+                    animate();
+                };
+
+                pc.onconnectionstatechange = () => {
+                    const state = pc.connectionState;
+                    if (['failed', 'disconnected', 'closed'].includes(state)) {
+                        teardown();
+                    }
+                };
+            };
+
+            const joinStream = () => {
+                dom.enableBtn.hidden = true;
+                dom.muteBtn.hidden = false;
+                setStatus('Joining...', '');
+                socket.emit('viewer-join');
+            };
+
+            const toggleMute = () => {
+                muted = !muted;
+                if (audioEl) audioEl.muted = muted;
+                dom.muteBtn.textContent = muted ? 'Unmute' : 'Mute';
+            };
+
+            const teardown = () => {
+                if (pc) { pc.close(); pc = null; }
+                if (audioEl) { audioEl.srcObject = null; audioEl.remove(); audioEl = null; }
+                if (audioContext) { audioContext.close(); audioContext = null; analyser = null; }
+                bars.forEach(b => b.style.height = '4px');
+                dom.enableBtn.hidden = false;
+                dom.muteBtn.hidden = true;
+                setStatus('Waiting', '');
+            };
+
+            const animate = () => {
+                if (!analyser) return;
+
+                const data = new Uint8Array(analyser.frequencyBinCount);
+
+                const step = () => {
+                    if (!pc || !audioEl || audioEl.paused) return;
+
+                    analyser.getByteFrequencyData(data);
+
+                    // Map frequency data to bars
+                    const barCount = bars.length;
+                    const binSize = Math.floor(data.length / barCount);
+
+                    for (let i = 0; i < barCount; i++) {
+                        let sum = 0;
+                        for (let j = 0; j < binSize; j++) {
+                            sum += data[i * binSize + j];
+                        }
+                        const avg = sum / binSize;
+                        bars[i].style.height = `${Math.max(4, (avg / 255) * 100)}%`;
+                    }
+
+                    requestAnimationFrame(step);
+                };
+
+                requestAnimationFrame(step);
+                statsLoop();
+            };
+
+            const statsLoop = async () => {
+                if (!pc) return;
+
+                try {
+                    const stats = await pc.getStats();
+                    let jitter = '-', rtt = '-', bitrate = '-', codec = '-';
+                    let inbound;
+                    const now = performance.now();
+                    const prevBytes = statsLoop._bytes || 0;
+                    const prevTime = statsLoop._time || now;
+
+                    stats.forEach(r => {
+                        if (r.type === 'inbound-rtp' && r.kind === 'audio') {
+                            inbound = r;
+                            if (r.jitter) jitter = (r.jitter * 1000).toFixed(1);
+                        }
+                        if (r.type === 'candidate-pair' && r.currentRoundTripTime !== undefined && r.nominated) {
+                            rtt = (r.currentRoundTripTime * 1000).toFixed(0);
+                        }
+                        if (r.type === 'codec' && r.mimeType?.includes('opus')) {
+                            codec = 'Opus';
+                            if (r.channels === 2) codec += ' Stereo';
+                        }
+                    });
+
+                    if (inbound?.bytesReceived != null) {
+                        const delta = inbound.bytesReceived - prevBytes;
+                        const dt = now - prevTime;
+                        if (dt > 0) bitrate = ((delta * 8) / dt).toFixed(0);
+                        statsLoop._bytes = inbound.bytesReceived;
+                        statsLoop._time = now;
+                    }
+
+                    dom.qualityStats.textContent = `${codec} | ${bitrate}kbps | RTT ${rtt}ms | Jitter ${jitter}ms`;
+                    socket.emit('listener-stats', { rttMs: rtt, jitterMs: jitter, bitrateKbps: bitrate });
+                } catch { }
+
+                setTimeout(statsLoop, 1000);
+            };
+
+            document.addEventListener('DOMContentLoaded', () => {
+                initBars();
+                initSocket();
+
+                dom.volume.addEventListener('input', () => {
+                    volume = dom.volume.value / 100;
+                    dom.volumeDisplay.textContent = `${dom.volume.value}%`;
+                    if (audioEl) audioEl.volume = volume;
+                });
+
+                dom.enableBtn.addEventListener('click', joinStream);
+                dom.muteBtn.addEventListener('click', toggleMute);
+            });
+        })();
     </script>
 </body>
 
