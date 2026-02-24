@@ -414,11 +414,51 @@
         return result.join('\r\n');
     };
 
+
+    const applyTuning = () => {
+        const latency = parseInt(dom.latency.value, 10);
+        const bitrateKbps = parseInt(dom.bitrate.value, 10);
+        
+        if (isNaN(latency) || isNaN(bitrateKbps)) return;
+
+        AUDIO_CONFIG.maxBitrate = bitrateKbps * 1000;
+        
+        // Update DOM
+        if (dom.tuneStatus) {
+            dom.tuneStatus.textContent = `48kHz Stereo | ${bitrateKbps}kbps | ${latency}ms Latency`;
+        }
+
+        // Notify server to tell listeners
+        socket.emit('tune-settings', { latency });
+
+        // Update active peers
+        peers.forEach(async (pc, viewerId) => {
+            const senders = pc.getSenders();
+            for (const sender of senders) {
+                if (sender.track && sender.track.kind === 'audio') {
+                    try {
+                        const params = sender.getParameters();
+                        if (params.encodings && params.encodings.length > 0) {
+                            params.encodings[0].maxBitrate = AUDIO_CONFIG.maxBitrate;
+                            await sender.setParameters(params);
+                        }
+                    } catch (e) {
+                        console.warn('Failed to apply new bitrate to peer', e);
+                    }
+                }
+            }
+        });
+        
+        notify(`Tuning applied: ${bitrateKbps}kbps, ${latency}ms`, 'success');
+    };
+
     // UI Event Bindings
+
     const bindUI = () => {
         dom.copyUrl?.addEventListener('click', () => copyToClipboard(dom.shareUrl, 'Console URL copied'));
         dom.copyListenUrl?.addEventListener('click', () => copyToClipboard(dom.listenUrl, 'Listener URL copied'));
         dom.startBtn?.addEventListener('click', startAudio);
+        dom.tuneBtn?.addEventListener('click', applyTuning);
         dom.stopBtn?.addEventListener('click', stopAudio);
     };
 
@@ -435,4 +475,35 @@
         get: () => socket,
         configurable: true
     });
+})();
+
+// Inline script logic from index.html moved here
+(() => {
+    const wait = () => {
+        if (!window.socket) return setTimeout(wait, 100);
+
+        const $ = id => document.getElementById(id);
+        const viewerList = $('viewerList');
+        const viewerCount = $('viewerCountInline');
+        const qualityPanel = $('qualityPanel');
+        const stats = {};
+
+        socket.on('stats', ({ viewerIds = [], viewerCount: count }) => {
+            viewerList.innerHTML = viewerIds.length
+                ? viewerIds.map(id => `<div class="viewer-chip">${id.slice(0, 8)}</div>`).join('')
+                : '<div class="viewer-empty">No listeners connected</div>';
+            qualityPanel.hidden = !viewerIds.length;
+            viewerCount.textContent = count || 0;
+        });
+
+        socket.on('listener-stats', ({ viewerId, rttMs, jitterMs, bitrateKbps }) => {
+            stats[viewerId] = { rttMs, jitterMs, bitrateKbps };
+            const lines = Object.entries(stats).sort().map(([id, s]) => {
+                const q = s.rttMs < 100 && s.jitterMs < 10 ? 'OK' : s.rttMs < 200 ? 'FAIR' : 'POOR';
+                return `[${q}] ${id.slice(0, 8)} | RTT:${s.rttMs}ms Jitter:${s.jitterMs}ms ${s.bitrateKbps}kbps`;
+            });
+            qualityPanel.textContent = lines.join('\n') || 'Waiting...';
+        });
+    };
+    wait();
 })();

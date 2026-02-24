@@ -1,225 +1,241 @@
-// Listener script
-let socket, pc, audioEl, hostIdRef = null;
-const bars = [];
-let muted = false, volume = 1.0;
+(() => {
+    'use strict';
 
-// DOM Refs
-const qs = id => document.getElementById(id);
-const audioStatus = qs('audioStatus');
-const connectionStatus = qs('connectionStatus');
-const clientsCount = qs('clientsCount');
-const vis = qs('audioVisualizer');
-const volumeSlider = qs('volumeSlider');
-const volumeDisplay = qs('volumeDisplay');
-const enableBtn = qs('enableAudio');
-const muteBtn = qs('muteAudio');
-const note = qs('notification');
-const qualityStats = qs('qualityStats');
-
-const setChipState = (el, state) => {
-    if (!el) return;
-    el.classList.remove('chip--ok', 'chip--warn', 'chip--error');
-    if (state) el.classList.add(`chip--${state}`);
-};
-
-const setAudioBadge = (message, state = 'idle') => {
-    audioStatus.textContent = message;
-    audioStatus.classList.remove('badge--idle', 'badge--live', 'badge--error');
-    audioStatus.classList.add(state === 'live' ? 'badge--live' : state === 'error' ? 'badge--error' : 'badge--idle');
-};
-
-document.addEventListener('DOMContentLoaded', () => {
-    initBars();
-    initSocket();
-    bindUi();
-    setAudioBadge('🔇 Waiting for audio stream...');
-});
-
-function initBars() {
-    for (let i = 0; i < 40; i++) {
-        const b = document.createElement('div');
-        b.className = 'visualizer-bar';
-        vis.appendChild(b);
-        bars.push(b);
-    }
-}
-
-function bindUi() {
-    volumeSlider.addEventListener('input', () => {
-        volume = volumeSlider.value / 100;
-        volumeDisplay.textContent = volumeSlider.value + '%';
-        if (audioEl) audioEl.volume = volume;
-    });
-    enableBtn.addEventListener('click', joinStream);
-    muteBtn.addEventListener('click', toggleMute);
-}
-
-function initSocket() {
-    socket = io();
-    socket.on('connect', () => {
-        setChipState(connectionStatus, 'ok');
-        connectionStatus.textContent = '🟢 Connected';
-    });
-    socket.on('disconnect', () => {
-        setChipState(connectionStatus, 'error');
-        connectionStatus.textContent = '🔴 Disconnected';
-        setAudioBadge('🔇 Disconnected', 'error');
-        teardown();
-    });
-    socket.on('no-host', () => {
-        setAudioBadge('❌ No host', 'error');
-        flash('No host streaming', 'error');
-        enableBtn.style.display = 'inline-flex';
-    });
-    socket.on('host-left', () => {
-        setAudioBadge('🔇 Host left', 'error');
-        flash('Host left', 'error');
-        teardown();
-    });
-    socket.on('host-stopped', () => {
-        setAudioBadge('🔇 Waiting for audio stream...', 'idle');
-        flash('Host stopped streaming', 'error');
-        teardown();
-    });
-    socket.on('host-streaming', () => {
-        if (enableBtn.style.display === 'none') socket.emit('viewer-join');
-    });
-    socket.on('webrtc-offer', async ({ sdp, hostId }) => {
-        hostIdRef = hostId;
-        await ensurePeer();
-        await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        socket.emit('webrtc-answer', { hostId, sdp: answer });
-    });
-    socket.on('webrtc-ice-candidate', ({ candidate, from }) => {
-        if (pc && candidate && from === hostIdRef) pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => { });
-    });
-    socket.on('stats', ({ viewerCount }) => {
-        clientsCount.textContent = `👥 ${viewerCount} listening`;
-    });
-}
-
-async function joinStream() {
-    enableBtn.style.display = 'none';
-    muteBtn.style.display = 'inline-flex';
-    setAudioBadge('⏳ Joining...', 'idle');
-    socket.emit('viewer-join');
-    flash('Request sent');
-}
-
-async function ensurePeer() {
-    if (pc) return;
-    pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-
-    pc.onicecandidate = e => {
-        if (e.candidate && hostIdRef) socket.emit('webrtc-ice-candidate', { targetId: hostIdRef, candidate: e.candidate });
+    const $ = id => document.getElementById(id);
+    const dom = {
+        status: $('audioStatus'),
+        connection: $('connectionStatus'),
+        clients: $('clientsCount'),
+        visualizer: $('audioVisualizer'),
+        volume: $('volumeSlider'),
+        volumeDisplay: $('volumeDisplay'),
+        enableBtn: $('enableAudio'),
+        muteBtn: $('muteAudio'),
+        notification: $('notification'),
+        qualityStats: $('qualityStats')
     };
 
-    pc.ontrack = e => {
-        if (!audioEl) {
-            audioEl = document.createElement('audio');
-            audioEl.autoplay = true;
-            audioEl.playsInline = true;
-            audioEl.controls = false;
-            audioEl.style.display = 'none';
-            audioEl.volume = volume;
-            document.body.appendChild(audioEl);
-        }
-        audioEl.srcObject = e.streams[0];
-        const p = audioEl.play();
-        if (p) p.catch(() => { setAudioBadge('⚠️ Tap Enable Audio again', 'error'); });
+    let socket, pc, audioEl, audioContext, analyser, hostId = null;
+    let muted = false, volume = 1;
+    let currentLatencyMs = 150; // default latency
+    const bars = [];
 
-        setAudioBadge('🎵 Live', 'live');
-        vis.classList.add('is-live');
-        animate();
+    const setStatus = (msg, type) => {
+        dom.status.textContent = msg;
+        dom.status.style.color = type === 'error' ? '#f87171' : type === 'live' ? '#4ade80' : '#fff';
     };
 
-    pc.onconnectionstatechange = () => {
-        if (['failed', 'disconnected', 'closed'].includes(pc.connectionState)) teardown();
+    const flash = msg => {
+        dom.notification.textContent = msg;
+        dom.notification.classList.add('show');
+        setTimeout(() => dom.notification.classList.remove('show'), 3000);
     };
-}
 
-function toggleMute() {
-    muted = !muted;
-    if (audioEl) audioEl.muted = muted;
-    muteBtn.textContent = muted ? '🔊 Unmute' : '🔇 Mute';
-}
+    // Enhance SDP for maximum Opus quality
+    const enhanceOpusSDP = (sdp) => {
+        const opusFmtp = 'minptime=10;stereo=1;sprop-stereo=1;maxaveragebitrate=510000;maxplaybackrate=48000;cbr=0;useinbandfec=0;usedtx=0';
+        const lines = sdp.split('\r\n');
+        const result = [];
+        let opusPayload = null;
 
-function teardown() {
-    if (pc) { pc.close(); pc = null; }
-    if (audioEl) { audioEl.srcObject = null; audioEl.remove(); audioEl = null; }
-    bars.forEach(b => b.style.height = '18%');
-    enableBtn.style.display = 'inline-flex';
-    muteBtn.style.display = 'none';
-    vis.classList.remove('is-live');
-    setAudioBadge('🔇 Waiting for audio stream...', 'idle');
-}
-
-function animate() {
-    const step = () => {
-        if (!pc || !audioEl || audioEl.paused) {
-            vis.classList.remove('is-live');
-            return;
-        }
-        bars.forEach(b => { b.style.height = (Math.random() * 80 + 20) + '%'; });
-        requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-    updateStatsLoop();
-}
-
-async function updateStatsLoop() {
-    if (!pc) return;
-    try {
-        const stats = await pc.getStats();
-        let jitterMs = '-', rttMs = '-', bitrateKbps = '-', packetsLost = 0, packetsRecv = 0, fractionLoss = '-';
-        let inboundRtp;
-        let prevBytes = updateStatsLoop._prevBytes || 0;
-        let prevTime = updateStatsLoop._prevTime || performance.now();
-        const now = performance.now();
-
-        stats.forEach(r => {
-            if (r.type === 'remote-inbound-rtp' && r.kind === 'audio') {
-                if (r.jitter) jitterMs = (r.jitter * 1000).toFixed(1);
-                if (r.packetsLost != null) packetsLost = r.packetsLost;
+        for (const line of lines) {
+            if (line.includes('opus/48000/2')) {
+                const match = line.match(/rtpmap:(\d+)/);
+                if (match) opusPayload = match[1];
             }
-            if (r.type === 'inbound-rtp' && r.kind === 'audio') {
-                inboundRtp = r;
-                if (r.packetsReceived != null) packetsRecv = r.packetsReceived;
+        }
+
+        if (!opusPayload) return sdp;
+
+        let addedFmtp = false;
+        for (const line of lines) {
+            if (line.startsWith(`a=fmtp:${opusPayload}`)) {
+                result.push(`a=fmtp:${opusPayload} ${opusFmtp}`);
+                addedFmtp = true;
+            } else {
+                result.push(line);
+                if (!addedFmtp && line.includes(`rtpmap:${opusPayload} opus`)) {
+                    result.push(`a=fmtp:${opusPayload} ${opusFmtp}`);
+                    addedFmtp = true;
+                }
             }
-            if (r.type === 'candidate-pair' && r.currentRoundTripTime !== undefined && r.nominated) {
-                rttMs = (r.currentRoundTripTime * 1000).toFixed(0);
+        }
+
+        return result.join('\r\n');
+    };
+
+    const initBars = () => {
+        dom.visualizer.innerHTML = '';
+        for (let i = 0; i < 32; i++) {
+            const bar = document.createElement('div');
+            bar.className = 'bar';
+            dom.visualizer.appendChild(bar);
+            bars.push(bar);
+        }
+    };
+
+    const applyPlayoutDelay = () => {
+        if (!pc) return;
+        const receivers = pc.getReceivers();
+        for (const receiver of receivers) {
+            if (receiver.track && receiver.track.kind === 'audio') {
+                if ('playoutDelayHint' in receiver) {
+                    receiver.playoutDelayHint = currentLatencyMs / 1000;
+                    console.log(`Applied playout delay hint: ${receiver.playoutDelayHint}s`);
+                }
+            }
+        }
+    };
+
+    const initSocket = () => {
+        socket = io();
+
+        socket.on('connect', () => {
+            dom.connection.textContent = 'Connected';
+            dom.connection.style.color = '#4ade80';
+        });
+
+        socket.on('disconnect', () => {
+            dom.connection.textContent = 'Disconnected';
+            dom.connection.style.color = '#f87171';
+            setStatus('Disconnected', 'error');
+            teardown();
+        });
+
+        socket.on('no-host', () => {
+            setStatus('No host', 'error');
+            flash('No host streaming');
+            dom.enableBtn.hidden = false;
+        });
+
+        socket.on('host-left', () => { setStatus('Host left', 'error'); teardown(); });
+        socket.on('host-stopped', () => { setStatus('Stopped', ''); teardown(); });
+        socket.on('host-streaming', () => { if (dom.enableBtn.hidden) socket.emit('viewer-join'); });
+
+        socket.on('webrtc-offer', async ({ sdp, hostId: hid }) => {
+            hostId = hid;
+            await setupPeerConnection();
+
+            // Enhance the incoming offer SDP
+            const enhancedOffer = enhanceOpusSDP(sdp);
+            await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: enhancedOffer }));
+
+            const answer = await pc.createAnswer();
+
+            // Enhance the answer SDP to request maximum quality
+            answer.sdp = enhanceOpusSDP(answer.sdp);
+
+            await pc.setLocalDescription(answer);
+            socket.emit('webrtc-answer', { hostId, sdp: answer });
+            
+            // Apply playout delay after SDP exchange
+            setTimeout(applyPlayoutDelay, 500);
+        });
+
+        socket.on('webrtc-ice-candidate', ({ candidate, from }) => {
+            if (pc && candidate && from === hostId) {
+                pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => { });
             }
         });
 
-        if (inboundRtp && inboundRtp.bytesReceived != null) {
-            const bytes = inboundRtp.bytesReceived;
-            const deltaBytes = bytes - prevBytes;
-            const deltaTime = now - prevTime;
-            if (deltaTime > 0) bitrateKbps = ((deltaBytes * 8) / deltaTime).toFixed(1);
-            updateStatsLoop._prevBytes = bytes;
-            updateStatsLoop._prevTime = now;
-        }
+        socket.on('stats', ({ viewerCount }) => {
+            dom.clients.textContent = `${viewerCount} listeners`;
+        });
+        
+        socket.on('tune-settings', ({ latency }) => {
+            if (latency) {
+                currentLatencyMs = latency;
+                applyPlayoutDelay();
+                console.log(`Received new tune settings, latency: ${latency}ms`);
+            }
+        });
+    };
 
-        if (packetsRecv > 0) fractionLoss = ((packetsLost / (packetsLost + packetsRecv)) * 100).toFixed(1) + '%';
+    const setupPeerConnection = async () => {
+        if (pc) return;
 
-        qualityStats.textContent = `⏱️ rtt ${rttMs}ms • jitter ${jitterMs}ms • bitrate ${bitrateKbps}kbps • loss ${fractionLoss}`;
+        pc = new RTCPeerConnection({
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        });
 
-        const lossValue = parseFloat(fractionLoss) || 0;
-        const rttValue = parseFloat(rttMs) || 0;
-        let qualityState = 'ok';
-        if (lossValue > 5 || rttValue > 250) qualityState = 'error';
-        else if (lossValue > 2 || rttValue > 150) qualityState = 'warn';
-        setChipState(qualityStats, qualityState);
+        pc.onicecandidate = e => {
+            if (e.candidate && hostId) {
+                socket.emit('webrtc-ice-candidate', { targetId: hostId, candidate: e.candidate });
+            }
+        };
 
-        socket.emit('listener-stats', { rttMs, jitterMs, bitrateKbps, fractionLoss, packetsLost, packetsRecv });
-    } catch (_) { }
-    setTimeout(updateStatsLoop, 1000);
-}
+        pc.ontrack = e => {
+            const stream = e.streams[0];
 
-function flash(msg, type = 'success') {
-    note.textContent = msg;
-    note.className = `notification ${type} show`;
-    setTimeout(() => note.classList.remove('show'), 2500);
-}
+            // Create audio element
+            if (!audioEl) {
+                audioEl = document.createElement('audio');
+                audioEl.autoplay = true;
+                audioEl.playsInline = true;
+                document.body.appendChild(audioEl);
+            }
+
+            audioEl.srcObject = stream;
+            audioEl.volume = volume;
+
+            // Apply playout delay when track arrives
+            if ('playoutDelayHint' in e.receiver) {
+                e.receiver.playoutDelayHint = currentLatencyMs / 1000;
+            }
+
+            // Create audio context for visualization
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                    sampleRate: 48000
+                });
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 64;
+
+                const source = audioContext.createMediaStreamSource(stream);
+                source.connect(analyser);
+                // Don't connect to destination - audio element handles playback
+            }
+
+            audioEl.play().catch(() => setStatus('Tap to enable', 'error'));
+            setStatus('LIVE', 'live');
+            animate();
+        };
+
+        pc.onconnectionstatechange = () => {
+            const state = pc.connectionState;
+            if (['failed', 'disconnected', 'closed'].includes(state)) {
+                teardown();
+            }
+        };
+    };
+
+    const joinStream = () => {
+        dom.enableBtn.hidden = true;
+        dom.muteBtn.hidden = false;
+        setStatus('Joining...', '');
+        socket.emit('viewer-join');
+    };
+
+    const toggleMute = () => {
+        muted = !muted;
+        if (audioEl) audioEl.muted = muted;
+        dom.muteBtn.textContent = muted ? 'Unmute' : 'Mute';
+    };
+
+    const teardown = () => {
+        if (pc) { pc.close(); pc = null; }
+        if (audioEl) { audioEl.srcObject = null; audioEl.remove(); audioEl = null; }
+        if (audioContext) { audioContext.close(); audioContext = null; analyser = null; }
+        bars.forEach(b => b.style.height = '4px');
+        dom.enableBtn.hidden = false;
+        dom.muteBtn.hidden = true;
+        setStatus('Waiting', '');
+    };
+
+    const animate = () => {
+        if (!analyser) return;
+
+        const data = new Uint8Array(analyser.frequencyBinCount);
+
+        const step = () => {
+            if (!pc || !au

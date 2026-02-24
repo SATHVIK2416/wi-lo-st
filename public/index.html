@@ -95,37 +95,6 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="script.js"></script>
-  <script>
-    (() => {
-      const wait = () => {
-        if (!window.socket) return setTimeout(wait, 100);
-
-        const $ = id => document.getElementById(id);
-        const viewerList = $('viewerList');
-        const viewerCount = $('viewerCountInline');
-        const qualityPanel = $('qualityPanel');
-        const stats = {};
-
-        socket.on('stats', ({ viewerIds = [], viewerCount: count }) => {
-          viewerList.innerHTML = viewerIds.length
-            ? viewerIds.map(id => `<div class="viewer-chip">${id.slice(0, 8)}</div>`).join('')
-            : '<div class="viewer-empty">No listeners connected</div>';
-          qualityPanel.hidden = !viewerIds.length;
-          viewerCount.textContent = count || 0;
-        });
-
-        socket.on('listener-stats', ({ viewerId, rttMs, jitterMs, bitrateKbps }) => {
-          stats[viewerId] = { rttMs, jitterMs, bitrateKbps };
-          const lines = Object.entries(stats).sort().map(([id, s]) => {
-            const q = s.rttMs < 100 && s.jitterMs < 10 ? 'OK' : s.rttMs < 200 ? 'FAIR' : 'POOR';
-            return `[${q}] ${id.slice(0, 8)} | RTT:${s.rttMs}ms Jitter:${s.jitterMs}ms ${s.bitrateKbps}kbps`;
-          });
-          qualityPanel.textContent = lines.join('\n') || 'Waiting...';
-        });
-      };
-      wait();
-    })();
-  </script>
 </body>
 
 </html>

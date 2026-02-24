@@ -150,6 +150,11 @@ io.on('connection', (socket) => {
     if (viewers.has(viewerId)) io.to(viewerId).emit('disconnect-request');
   });
 
+  socket.on('tune-settings', (payload) => {
+    if (socket.id !== hostSocketId) return;
+    io.emit('tune-settings', payload);
+  });
+
   socket.on('disconnect', () => {
     if (socket.id === hostSocketId) {
       console.log('❌ Host disconnected');
