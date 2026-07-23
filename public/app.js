@@ -210,7 +210,7 @@ document.addEventListener('DOMContentLoaded', () => {
           bufferData = await event.data.arrayBuffer();
         }
         if (bufferData instanceof ArrayBuffer) {
-          playAudioPacket(bufferData);
+          await playAudioPacket(bufferData);
         }
       }
     };
@@ -344,7 +344,7 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
     }
 
     if (gainNode) {
-      try { gainNode.gain.setValueAtTime(0, audioCtx.currentTime); } catch (e) {}
+      try { gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02); } catch (e) {}
       try { gainNode.disconnect(); } catch (e) {}
     }
     if (delayNode) {
@@ -357,8 +357,16 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
       try { workletNode.disconnect(); } catch (e) {}
     }
     if (dummyInputNode) {
-      try { dummyInputNode.disconnect(); } catch (e) {}
+      try { dummyInputNode.stop(); dummyInputNode.disconnect(); } catch (e) {}
     }
+
+    // Fully wipe node references so they are recreated fresh next time
+    workletNode = null;
+    fallbackProcessor = null;
+    dummyInputNode = null;
+    gainNode = null;
+    delayNode = null;
+    analyser = null;
 
     playPrompt.style.display = 'flex';
     visualWave.classList.add('paused');
@@ -461,11 +469,11 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
     }
   });
 
-  function playAudioPacket(arrayBuffer) {
+  async function playAudioPacket(arrayBuffer) {
     if (!audioCtx || !isReceivingAudio) return;
     try {
       if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
+        await audioCtx.resume();
       }
 
       if (arrayBuffer.byteLength <= 4) return;
@@ -483,27 +491,30 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
       const int16 = new Int16Array(arrayBuffer, pcmOffset);
       if (int16.length === 0) return;
 
-      const targetSampleRate = audioCtx.sampleRate || 48000;
-      const resampleRatio = targetSampleRate / packetSampleRate;
-      const outputLength = Math.round(int16.length * resampleRatio);
-      const float32 = new Float32Array(outputLength);
+      const targetSampleRate = audioCtx.sampleRate;
+      let float32;
 
-      // Resample and convert Int16 to Float32
-      for (let i = 0; i < outputLength; i++) {
-        const srcIndex = i / resampleRatio;
-        const indexLow = Math.floor(srcIndex);
-        const indexHigh = Math.min(int16.length - 1, indexLow + 1);
-        const weight = srcIndex - indexLow;
+      if (packetSampleRate !== targetSampleRate) {
+        // Resample using OfflineAudioContext (high-quality sinc interpolation)
+        const offlineCtx = new window.OfflineAudioContext(1, int16.length, packetSampleRate);
+        const buffer = offlineCtx.createBuffer(1, int16.length, packetSampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < int16.length; i++) {
+          data[i] = int16[i] / 32768.0;
+        }
+        const source = offlineCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(offlineCtx.destination);
+        source.start();
 
-        const valLow = int16[indexLow] / 32768.0;
-        const valHigh = int16[indexHigh] / 32768.0;
-        let sample = valLow + weight * (valHigh - valLow);
-
-        // Soft clipping
-        if (sample > 0.95) sample = 0.95 + (sample - 0.95) * 0.1;
-        if (sample < -0.95) sample = -0.95 + (sample + 0.95) * 0.1;
-
-        float32[i] = sample;
+        const rendered = await offlineCtx.startRendering();
+        float32 = rendered.getChannelData(0);
+      } else {
+        // No resampling needed
+        float32 = new Float32Array(int16.length);
+        for (let i = 0; i < int16.length; i++) {
+          float32[i] = int16[i] / 32768.0;
+        }
       }
 
       // Ensure gain is set to target volume directly when live audio is active
