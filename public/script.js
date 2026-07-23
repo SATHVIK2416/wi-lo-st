@@ -1,6 +1,6 @@
 /**
- * Host Control Script - Maximum Audio Quality
- * Streams system audio via WebRTC with highest possible fidelity
+ * Host Control Script - Maximum Audio Quality (WHIP Client for MediaMTX)
+ * Streams system audio to MediaMTX SFU
  */
 (() => {
     'use strict';
@@ -28,43 +28,16 @@
     };
 
     // State
-    let socket, mediaStream, audioContext, analyser, processedTrack;
+    let socket, mediaStream, audioContext, analyser, processedTrack, whipPc;
     let isStreaming = false;
-    const peers = new Map();
-    const pendingViewers = new Set();
 
-    // Audio Quality Settings - Maximum Quality
+    // Audio Quality Settings
     const AUDIO_CONFIG = {
-        // Opus parameters for maximum quality
-        // stereo=1: Enable stereo
-        // sprop-stereo=1: Signal stereo capability
-        // maxaveragebitrate=510000: Maximum Opus bitrate (510kbps)
-        // maxplaybackrate=48000: Maximum sample rate
-        // cbr=0: Variable bitrate for better quality
-        // useinbandfec=0: Disable forward error correction (adds latency)
-        // usedtx=0: Disable discontinuous transmission (keeps quality constant)
         opusFmtp: 'minptime=10;stereo=1;sprop-stereo=1;maxaveragebitrate=510000;maxplaybackrate=48000;cbr=0;useinbandfec=0;usedtx=0',
-
-        // RTP encoding parameters
-        maxBitrate: 510000,  // 510kbps - max for Opus
-
-        // Display media constraints - highest quality audio capture
+        maxBitrate: 510000,
         displayMedia: {
-            video: {
-                frameRate: { max: 1 }, // Minimal video
-                width: { ideal: 320 },
-                height: { ideal: 180 }
-            },
-            audio: {
-                // Disable all processing to preserve original audio
-                echoCancellation: false,
-                noiseSuppression: false,
-                autoGainControl: false,
-                // Request highest quality
-                sampleRate: 48000,
-                sampleSize: 16,
-                channelCount: 2  // Stereo
-            }
+            video: { frameRate: { max: 1 }, width: { ideal: 320 }, height: { ideal: 180 } },
+            audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, sampleRate: 48000, sampleSize: 16, channelCount: 2 }
         }
     };
 
@@ -97,63 +70,15 @@
     // Socket.IO
     const initSocket = () => {
         socket = io();
-
         socket.on('connect', () => {
-            if (dom.connection) {
-                dom.connection.textContent = 'Connected';
-                dom.connection.style.color = '#4ade80';
-            }
+            if (dom.connection) { dom.connection.textContent = 'Connected'; dom.connection.style.color = '#4ade80'; }
         });
-
         socket.on('disconnect', () => {
-            if (dom.connection) {
-                dom.connection.textContent = 'Disconnected';
-                dom.connection.style.color = '#f87171';
-            }
+            if (dom.connection) { dom.connection.textContent = 'Disconnected'; dom.connection.style.color = '#f87171'; }
         });
-
         socket.on('stats', ({ viewerCount }) => {
             if (dom.clients) dom.clients.textContent = `${viewerCount} listening`;
         });
-
-        socket.on('viewer-joined', async ({ viewerId }) => {
-            if (!processedTrack) {
-                pendingViewers.add(viewerId);
-                return;
-            }
-            await createPeerConnection(viewerId);
-        });
-
-        socket.on('webrtc-answer', async ({ sdp, viewerId }) => {
-            const pc = peers.get(viewerId);
-            if (pc) {
-                try {
-                    await pc.setRemoteDescription(new RTCSessionDescription(sdp));
-                } catch (e) {
-                    console.error('Failed to set remote description:', e);
-                }
-            }
-        });
-
-        socket.on('webrtc-ice-candidate', async ({ candidate, from }) => {
-            const pc = peers.get(from);
-            if (pc && candidate) {
-                try {
-                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
-                } catch (e) {
-                    console.warn('Failed to add ICE candidate:', e);
-                }
-            }
-        });
-
-        socket.on('viewer-left', ({ viewerId }) => {
-            const pc = peers.get(viewerId);
-            if (pc) {
-                pc.close();
-                peers.delete(viewerId);
-            }
-        });
-
         socket.emit('register-host');
     };
 
@@ -162,13 +87,11 @@
         try {
             const res = await fetch('/network-info');
             const data = await res.json();
-
             const html = [`<div class="network-address"><strong>Local:</strong> ${data.localUrl}</div>`];
             data.addresses.forEach(a => {
                 html.push(`<div class="network-address"><strong>${a.interface}:</strong> ${a.url}</div>`);
             });
             if (dom.network) dom.network.innerHTML = html.join('');
-
             const shareUrl = data.addresses[0]?.url || data.localUrl;
             if (dom.shareUrl) dom.shareUrl.value = shareUrl;
             if (dom.listenUrl) dom.listenUrl.value = `${shareUrl}/listen`;
@@ -177,56 +100,121 @@
         }
     };
 
-    // Start Audio Stream
+    const enhanceOpusSDP = (sdp) => {
+        const lines = sdp.split('\r\n');
+        const result = [];
+        let opusPayload = null;
+        for (const line of lines) {
+            if (line.includes('opus/48000/2')) {
+                const match = line.match(/rtpmap:(\d+)/);
+                if (match) opusPayload = match[1];
+            }
+        }
+        if (!opusPayload) return sdp;
+        let addedFmtp = false;
+        for (const line of lines) {
+            if (line.startsWith(`a=fmtp:${opusPayload}`)) {
+                result.push(`a=fmtp:${opusPayload} ${AUDIO_CONFIG.opusFmtp}`);
+                addedFmtp = true;
+            } else {
+                result.push(line);
+                if (!addedFmtp && line.includes(`rtpmap:${opusPayload} opus`)) {
+                    result.push(`a=fmtp:${opusPayload} ${AUDIO_CONFIG.opusFmtp}`);
+                    addedFmtp = true;
+                }
+            }
+        }
+        return result.join('\r\n');
+    };
+
+    const startWhipConnection = async () => {
+        if (!processedTrack) return;
+        whipPc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+        whipPc.onconnectionstatechange = () => {
+            if (['failed', 'closed'].includes(whipPc.connectionState)) stopAudio();
+        };
+
+        const sender = whipPc.addTrack(processedTrack, new MediaStream([processedTrack]));
+        try {
+            const params = sender.getParameters();
+            if (!params.encodings || !params.encodings.length) params.encodings = [{}];
+            params.encodings[0].maxBitrate = AUDIO_CONFIG.maxBitrate;
+            params.encodings[0].priority = 'high';
+            params.encodings[0].networkPriority = 'high';
+            await sender.setParameters(params);
+        } catch (e) { console.warn('Could not set sender parameters:', e); }
+
+        try {
+            const transceiver = whipPc.getTransceivers().find(t => t.sender === sender);
+            if (transceiver) {
+                transceiver.direction = 'sendonly';
+                if (RTCRtpSender.getCapabilities) {
+                    const caps = RTCRtpSender.getCapabilities('audio');
+                    if (caps?.codecs) {
+                        const opusCodecs = caps.codecs.filter(c => c.mimeType === 'audio/opus');
+                        const otherCodecs = caps.codecs.filter(c => c.mimeType !== 'audio/opus');
+                        if (transceiver.setCodecPreferences) transceiver.setCodecPreferences([...opusCodecs, ...otherCodecs]);
+                    }
+                }
+            }
+        } catch (e) { console.warn('Could not set codec preferences:', e); }
+
+        const offer = await whipPc.createOffer();
+        offer.sdp = enhanceOpusSDP(offer.sdp);
+        await whipPc.setLocalDescription(offer);
+
+        await new Promise(resolve => {
+            if (whipPc.iceGatheringState === 'complete') resolve();
+            else {
+                const checkState = () => {
+                    if (whipPc.iceGatheringState === 'complete') {
+                        whipPc.removeEventListener('icegatheringstatechange', checkState);
+                        resolve();
+                    }
+                };
+                whipPc.addEventListener('icegatheringstatechange', checkState);
+                setTimeout(resolve, 2000);
+            }
+        });
+
+        const whipUrl = `http://${window.location.hostname}:8889/live/whip`;
+        const response = await fetch(whipUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/sdp' },
+            body: whipPc.localDescription.sdp
+        });
+
+        if (!response.ok) {
+            throw new Error(`MediaMTX WHIP failed: ${response.status}`);
+        }
+
+        const answerSdp = await response.text();
+        await whipPc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: answerSdp }));
+    };
+
     const startAudio = async () => {
         try {
-            // Get display media with audio
             mediaStream = await navigator.mediaDevices.getDisplayMedia(AUDIO_CONFIG.displayMedia);
-
             const audioTracks = mediaStream.getAudioTracks();
-            if (!audioTracks.length) {
-                throw new Error('No audio track - make sure to check "Share audio" when selecting screen');
-            }
+            if (!audioTracks.length) throw new Error('No audio track - make sure to check "Share audio"');
 
-            // Create audio context for visualization
-            audioContext = new (window.AudioContext || window.webkitAudioContext)({
-                sampleRate: 48000,
-                latencyHint: 'playback'
-            });
-
-            // Set up audio processing chain
+            audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000, latencyHint: 'playback' });
             const source = audioContext.createMediaStreamSource(new MediaStream([audioTracks[0]]));
             analyser = audioContext.createAnalyser();
             analyser.fftSize = 256;
-
-            // Create destination for processed audio
             const destination = audioContext.createMediaStreamDestination();
-
-            // Connect: source -> analyser -> destination (no EQ, preserve original)
             source.connect(analyser);
             analyser.connect(destination);
-
             processedTrack = destination.stream.getAudioTracks()[0];
 
-            // Minimize video overhead
-            mediaStream.getVideoTracks().forEach(v => {
-                try {
-                    v.applyConstraints({ frameRate: { max: 1 } });
-                } catch { }
-            });
+            mediaStream.getVideoTracks().forEach(v => { try { v.applyConstraints({ frameRate: { max: 1 } }); } catch { } });
 
-            // Handle track end
             const onTrackEnd = () => stopAudio();
             audioTracks[0].onended = onTrackEnd;
             mediaStream.getVideoTracks().forEach(v => v.onended = onTrackEnd);
 
-            // Connect pending viewers
-            for (const viewerId of pendingViewers) {
-                await createPeerConnection(viewerId);
-            }
-            pendingViewers.clear();
+            await startWhipConnection();
 
-            // Update UI
             isStreaming = true;
             if (dom.startBtn) dom.startBtn.hidden = true;
             if (dom.stopBtn) dom.stopBtn.hidden = false;
@@ -234,36 +222,25 @@
             dom.visualizer?.classList.add('is-active');
 
             visualize();
-            notify('Streaming at maximum quality (510kbps stereo)', 'success');
+            notify('Streaming to MediaMTX via WHIP', 'success');
             socket.emit('announce-streaming');
-
         } catch (e) {
             console.error('Start audio failed:', e);
             let msg = 'Failed to start streaming';
-            if (e.name === 'NotAllowedError') msg = 'Screen sharing was denied';
-            else if (e.message.includes('No audio')) msg = e.message;
+            if (e.message && e.message.includes('MediaMTX')) msg = 'MediaMTX not running! Please start MediaMTX server on port 8889.';
+            else if (e.name === 'NotAllowedError') msg = 'Screen sharing was denied';
+            else if (e.message && e.message.includes('No audio')) msg = e.message;
             notify(msg, 'error');
+            stopAudio();
         }
     };
 
-    // Stop Audio Stream
     const stopAudio = () => {
-        if (mediaStream) {
-            mediaStream.getTracks().forEach(t => t.stop());
-            mediaStream = null;
-        }
-
-        if (audioContext) {
-            audioContext.close();
-            audioContext = null;
-        }
-
+        if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+        if (audioContext) { audioContext.close(); audioContext = null; }
+        if (whipPc) { whipPc.close(); whipPc = null; }
         processedTrack = null;
         isStreaming = false;
-
-        peers.forEach(pc => pc.close());
-        peers.clear();
-        pendingViewers.clear();
 
         if (dom.startBtn) dom.startBtn.hidden = false;
         if (dom.stopBtn) dom.stopBtn.hidden = true;
@@ -275,165 +252,33 @@
         notify('Stream stopped');
     };
 
-    // Audio Level Visualization
     const visualize = () => {
         if (!analyser || !isStreaming) return;
-
         const data = new Uint8Array(analyser.frequencyBinCount);
-
         const loop = () => {
             if (!isStreaming) return;
-
             analyser.getByteFrequencyData(data);
             let sum = 0;
             for (let i = 0; i < data.length; i++) sum += data[i];
             const avg = sum / data.length;
-
             if (dom.levelBar) dom.levelBar.style.width = `${(avg / 255) * 100}%`;
-
             requestAnimationFrame(loop);
         };
-
         requestAnimationFrame(loop);
     };
 
-    // WebRTC Peer Connection with Maximum Quality Settings
-    const createPeerConnection = async (viewerId) => {
-        if (!processedTrack) return;
-
-        const pc = new RTCPeerConnection({
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-        });
-
-        peers.set(viewerId, pc);
-
-        pc.onicecandidate = e => {
-            if (e.candidate) {
-                socket.emit('webrtc-ice-candidate', { targetId: viewerId, candidate: e.candidate });
-            }
-        };
-
-        pc.onconnectionstatechange = () => {
-            const state = pc.connectionState;
-            if (state === 'failed' || state === 'disconnected' || state === 'closed') {
-                pc.close();
-                peers.delete(viewerId);
-            }
-        };
-
-        // Add the audio track
-        const sender = pc.addTrack(processedTrack, new MediaStream([processedTrack]));
-
-        // Configure sender for maximum quality
-        try {
-            const params = sender.getParameters();
-            if (!params.encodings || params.encodings.length === 0) {
-                params.encodings = [{}];
-            }
-
-            // Set maximum bitrate
-            params.encodings[0].maxBitrate = AUDIO_CONFIG.maxBitrate;
-            params.encodings[0].priority = 'high';
-            params.encodings[0].networkPriority = 'high';
-
-            await sender.setParameters(params);
-        } catch (e) {
-            console.warn('Could not set sender parameters:', e);
-        }
-
-        // Set preferred codecs (Opus stereo first)
-        try {
-            const transceiver = pc.getTransceivers().find(t => t.sender === sender);
-            if (transceiver) {
-                transceiver.direction = 'sendonly';
-
-                if (RTCRtpSender.getCapabilities) {
-                    const caps = RTCRtpSender.getCapabilities('audio');
-                    if (caps?.codecs) {
-                        // Prefer Opus with stereo
-                        const opusCodecs = caps.codecs.filter(c => c.mimeType === 'audio/opus');
-                        const otherCodecs = caps.codecs.filter(c => c.mimeType !== 'audio/opus');
-
-                        if (transceiver.setCodecPreferences) {
-                            transceiver.setCodecPreferences([...opusCodecs, ...otherCodecs]);
-                        }
-                    }
-                }
-            }
-        } catch (e) {
-            console.warn('Could not set codec preferences:', e);
-        }
-
-        // Create offer
-        const offer = await pc.createOffer({
-            offerToReceiveAudio: false,
-            offerToReceiveVideo: false,
-            voiceActivityDetection: false
-        });
-
-        // Enhance SDP for maximum Opus quality
-        offer.sdp = enhanceOpusSDP(offer.sdp);
-
-        await pc.setLocalDescription(offer);
-        socket.emit('webrtc-offer', { viewerId, sdp: offer });
-    };
-
-    // Enhance SDP to set Opus to maximum quality
-    const enhanceOpusSDP = (sdp) => {
-        const lines = sdp.split('\r\n');
-        const result = [];
-        let opusPayload = null;
-
-        // Find Opus payload type
-        for (const line of lines) {
-            if (line.includes('opus/48000/2')) {
-                const match = line.match(/rtpmap:(\d+)/);
-                if (match) opusPayload = match[1];
-            }
-        }
-
-        if (!opusPayload) return sdp;
-
-        // Build new SDP with enhanced Opus parameters
-        let addedFmtp = false;
-        for (const line of lines) {
-            if (line.startsWith(`a=fmtp:${opusPayload}`)) {
-                // Replace existing fmtp line with our high-quality settings
-                result.push(`a=fmtp:${opusPayload} ${AUDIO_CONFIG.opusFmtp}`);
-                addedFmtp = true;
-            } else {
-                result.push(line);
-                // Add fmtp after rtpmap if not already present
-                if (!addedFmtp && line.includes(`rtpmap:${opusPayload} opus`)) {
-                    result.push(`a=fmtp:${opusPayload} ${AUDIO_CONFIG.opusFmtp}`);
-                    addedFmtp = true;
-                }
-            }
-        }
-
-        return result.join('\r\n');
-    };
-
-
-    const applyTuning = () => {
+    const applyTuning = async () => {
         const latency = parseInt(dom.latency.value, 10);
         const bitrateKbps = parseInt(dom.bitrate.value, 10);
-        
         if (isNaN(latency) || isNaN(bitrateKbps)) return;
 
         AUDIO_CONFIG.maxBitrate = bitrateKbps * 1000;
-        
-        // Update DOM
-        if (dom.tuneStatus) {
-            dom.tuneStatus.textContent = `48kHz Stereo | ${bitrateKbps}kbps | ${latency}ms Latency`;
-        }
+        if (dom.tuneStatus) dom.tuneStatus.textContent = `48kHz Stereo | ${bitrateKbps}kbps | ${latency}ms Latency`;
 
-        // Notify server to tell listeners
         socket.emit('tune-settings', { latency });
 
-        // Update active peers
-        peers.forEach(async (pc, viewerId) => {
-            const senders = pc.getSenders();
+        if (whipPc) {
+            const senders = whipPc.getSenders();
             for (const sender of senders) {
                 if (sender.track && sender.track.kind === 'audio') {
                     try {
@@ -442,17 +287,12 @@
                             params.encodings[0].maxBitrate = AUDIO_CONFIG.maxBitrate;
                             await sender.setParameters(params);
                         }
-                    } catch (e) {
-                        console.warn('Failed to apply new bitrate to peer', e);
-                    }
+                    } catch (e) { console.warn('Failed to apply new bitrate', e); }
                 }
             }
-        });
-        
+        }
         notify(`Tuning applied: ${bitrateKbps}kbps, ${latency}ms`, 'success');
     };
-
-    // UI Event Bindings
 
     const bindUI = () => {
         dom.copyUrl?.addEventListener('click', () => copyToClipboard(dom.shareUrl, 'Console URL copied'));
@@ -462,7 +302,6 @@
         dom.stopBtn?.addEventListener('click', stopAudio);
     };
 
-    // Initialize
     document.addEventListener('DOMContentLoaded', () => {
         initSocket();
         loadNetworkInfo();
@@ -470,39 +309,29 @@
         setStatus('OFFLINE', 'neutral');
     });
 
-    // Expose socket for inline scripts
-    Object.defineProperty(window, 'socket', {
-        get: () => socket,
-        configurable: true
-    });
+    Object.defineProperty(window, 'socket', { get: () => socket, configurable: true });
 })();
 
-// Inline script logic from index.html moved here
+// Inline logic for stats
 (() => {
     const wait = () => {
         if (!window.socket) return setTimeout(wait, 100);
-
         const $ = id => document.getElementById(id);
         const viewerList = $('viewerList');
         const viewerCount = $('viewerCountInline');
         const qualityPanel = $('qualityPanel');
-        const stats = {};
-
+        
         socket.on('stats', ({ viewerIds = [], viewerCount: count }) => {
-            viewerList.innerHTML = viewerIds.length
-                ? viewerIds.map(id => `<div class="viewer-chip">${id.slice(0, 8)}</div>`).join('')
-                : '<div class="viewer-empty">No listeners connected</div>';
-            qualityPanel.hidden = !viewerIds.length;
-            viewerCount.textContent = count || 0;
-        });
-
-        socket.on('listener-stats', ({ viewerId, rttMs, jitterMs, bitrateKbps }) => {
-            stats[viewerId] = { rttMs, jitterMs, bitrateKbps };
-            const lines = Object.entries(stats).sort().map(([id, s]) => {
-                const q = s.rttMs < 100 && s.jitterMs < 10 ? 'OK' : s.rttMs < 200 ? 'FAIR' : 'POOR';
-                return `[${q}] ${id.slice(0, 8)} | RTT:${s.rttMs}ms Jitter:${s.jitterMs}ms ${s.bitrateKbps}kbps`;
-            });
-            qualityPanel.textContent = lines.join('\n') || 'Waiting...';
+            if (viewerCount) viewerCount.textContent = count || 0;
+            if (viewerList) {
+                viewerList.innerHTML = count > 0 
+                    ? `<div class="viewer-chip">MediaMTX SFU Active</div>`
+                    : '<div class="viewer-empty">No listeners connected</div>';
+            }
+            if (qualityPanel) {
+                qualityPanel.hidden = count === 0;
+                qualityPanel.textContent = count > 0 ? 'Routing audio via MediaMTX SFU' : 'Waiting...';
+            }
         });
     };
     wait();

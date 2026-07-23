@@ -1,28 +1,36 @@
-# 🔊 Live Audio Share (WebRTC Edition)
+# 🔊 Live Audio Share (MediaMTX SFU Edition)
 
-Live stream your system audio (anything playing on your computer) to phones, tablets, or other PCs on the same Wi‑Fi with low latency using WebRTC.
+Live stream your system audio (anything playing on your computer) to phones, tablets, or other PCs on the same Wi‑Fi with ultra-low latency using WebRTC.
 
-> Legacy video upload + chunked audio code was removed. Architecture now uses one WebRTC audio track per listener for smoother, gap‑free playback.
+> **Architecture Revamp**: The project has migrated from a P2P mesh network to a **Selective Forwarding Unit (SFU)** architecture using [MediaMTX](https://github.com/bluenviron/mediamtx). This solves Wi-Fi congestion and CPU scaling issues by having the host upload a single stream to the SFU, which distributes it to all listeners.
 
 ## ✨ Features
 
 - 🖥️ **System Audio Capture** – Share any app / browser / media player output
-- 🛰️ **WebRTC Transport** – Continuous Opus stream with built‑in jitter buffering
-- 👥 **Unlimited Listeners** – A RTCPeerConnection is created on demand per viewer
+- 🛰️ **WebRTC Transport via SFU** – Continuous Opus stream distributed by MediaMTX
+- 👥 **Massively Scalable** – Host only uploads once regardless of listener count
 - 📊 **Live Stats** – Real‑time listener count (broadcast via Socket.IO)
-- 🎚️ **Level Meter** – Host-side audio level visualization
-- 🔗 **Simple URLs** – `/` (host control) + `/listen` (lightweight listener)
-- � **LAN Friendly** – Prints all local network URLs for easy sharing
-- 🔄 **Resilient** – Late joiners instantly receive a fresh offer
+- 🎚️ **Live Audio Tuning** – Adjust latency and bitrate on the fly
+- 🔗 **Zero Install for Listeners** – Listeners just open a web URL (`/listen`)
+- 🔄 **WHIP & WHEP** – Uses modern WebRTC-HTTP ingestion/egress protocols
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 16+ (14 usually fine but 16+ recommended)
-- Modern Chromium / Firefox / Edge (WebRTC + getDisplayMedia)
-- Permission to share screen + audio (browser prompt)
+1. **Node.js 16+** (to serve the UI)
+2. **MediaMTX** (to route the WebRTC traffic)
+   - Download the latest binary from [MediaMTX Releases](https://github.com/bluenviron/mediamtx/releases).
+3. Modern Chromium / Firefox / Edge (WebRTC + `getDisplayMedia`)
 
-### Install & Run
+### 1. Start MediaMTX
+Place the `mediamtx` executable in the project root directory alongside the included `mediamtx.yml` configuration file. Run it:
+```bash
+./mediamtx
+# or on Windows: mediamtx.exe
+```
+Ensure it binds to ports 8889 (WebRTC) and 9997 (API).
+
+### 2. Start the Node.js Server
 ```bash
 npm install
 npm start
@@ -32,116 +40,62 @@ Dev (auto‑restart):
 npm run dev
 ```
 
-Then open:
-- Host: http://localhost:3000
-- LAN: use one of the printed `http://<LAN_IP>:3000` addresses
+### 3. Open the UIs
+- **Host**: `http://localhost:3000`
+- **Listener (LAN)**: Use one of the printed `http://<LAN_IP>:3000/listen` addresses
 
 ## ▶️ Hosting a Stream
-1. Open the host page (`/`).
-2. Click **🔊 Share System Audio**.
-3. In the share picker choose Entire Screen (or a window) AND tick **Share audio**.
-4. Once approved the status shows streaming; level bar animates.
-5. Share the Listener URL (shown on page) e.g. `http://<LAN_IP>:3000/listen`.
-6. Stop anytime with **⏹️ Stop Sharing**.
+1. Ensure both MediaMTX and the Node.js server are running.
+2. Open the host page (`/`).
+3. Click **🔊 Share System Audio**.
+4. In the share picker choose Entire Screen (or a window) AND tick **Share audio**.
+5. The browser will use WHIP to push the stream to MediaMTX.
+6. Share the Listener URL e.g. `http://<LAN_IP>:3000/listen`.
+7. Adjust bitrate and latency in the host UI to tune performance vs quality.
 
 ## 🎧 Joining as a Listener
 1. Open the `/listen` URL on the same Wi‑Fi.
-2. Press **Enable Audio** (required for autoplay policies).
-3. The page negotiates a WebRTC connection and starts playback.
-4. Adjust volume / mute locally – it doesn’t affect the host or others.
+2. Press **Join Stream** (required for autoplay policies).
+3. The page uses WHEP to pull the stream from MediaMTX.
+4. Adjust volume locally – it doesn’t affect the host or others.
 
 ## 🔍 How It Works
-| Phase | Flow |
-|-------|------|
-| Capture | Host calls `getDisplayMedia({ video:true, audio:true })` (video track discarded, audio kept). |
-| Signaling | Socket.IO messages: `register-host`, `viewer-join`, `webrtc-offer`, `webrtc-answer`, `webrtc-ice-candidate`. |
-| Connection | Host creates a RTCPeerConnection per viewer, adds the system audio track, sends SDP offer. |
-| Response | Viewer sets remote offer, creates answer, sends back; ICE candidates exchanged. |
-| Playback | Viewer attaches received stream to an `<audio>` element (autoplay). |
-| Stats | Server tracks viewer sockets, periodically emits `stats` with listener count. |
+| Component | Flow |
+|-----------|------|
+| **Host** (`script.js`) | Calls `getDisplayMedia`, creates an RTCPeerConnection, and sends an SDP offer via HTTP POST (WHIP) to MediaMTX. |
+| **MediaMTX** | Receives the WebRTC stream via WHIP, answers with an SDP, and holds the stream in its internal router. |
+| **Listener** (`listen.js`) | Creates an RTCPeerConnection (recvonly) and sends an SDP offer via HTTP POST (WHEP) to MediaMTX. Receives answer and plays audio. |
+| **Node.js UI** | Serves static assets, keeps track of viewer counts via Socket.IO, and broadcasts tune settings (playout delays) from host to listeners. |
 
 ## 🛠️ Technical Architecture
+
+**MediaMTX (`mediamtx.yml`)**
+- `webrtc: yes` on `:8889`
+- Acts as the central WebRTC router (SFU).
+
 **Backend (`server.js`)**
 - Express serves static assets.
-- Socket.IO roomless signaling (custom events, host socket ID tracking).
-- STUN: `stun:stun.l.google.com:19302` for NAT traversal.
-- Lightweight stats broadcaster.
+- Socket.IO tracks simple viewer connections for UI stats.
 
 **Frontend Host (`public/script.js`)**
-- Captures system audio → extracts one `MediaStreamTrack`.
-- On `viewer-joined` creates RTCPeerConnection, adds track, generates offer.
-- Handles answers + ICE from viewers; cleans up on disconnect.
-- AnalyserNode drives level meter (visual only – not sent to viewers).
+- WHIP Client for ingestion.
+- Modifies SDP to force maximum Opus quality (510kbps, stereo, minptime=10).
 
-**Frontend Listener (`public/listen.html`)**
-- Connects via Socket.IO.
-- Requests to join; receives offer → answer → ICE.
-- Plays audio in a single persistent element (no per‑chunk artifacts).
-- Simple CSS visualizer (pseudo‑random) for lightweight feedback.
-
-## 📁 File Structure
-```
-wi-lo-st/
-├── server.js          # Express + Socket.IO signaling server
-├── package.json       # Scripts & deps
-├── public/
-│   ├── index.html     # Host UI
-│   ├── listen.html    # Listener UI (WebRTC)
-│   ├── script.js      # Host logic (capture + signaling)
-│   └── styles.css     # Shared styles (minor)
-└── README.md
-```
-
-## � Migration Note (Why the Old Chunk Method Failed)
-The original build used `MediaRecorder` → small Opus chunks → Socket.IO broadcast → create & play an `<audio>` element per chunk. Problems:
-1. Latency / Gaps – Browser scheduling many short elements introduced timing drift & gaps.
-2. Autoplay Policies – Frequent element creation could be blocked or delayed.
-3. Jitter – No adaptive buffer; network variability caused stutter.
-4. Memory & GC Pressure – Rapid blob URL creation/destruction.
-5. No Congestion Control – Raw sockets lacked media‑aware pacing.
-
-WebRTC solves all of these with a continuous track, jitter buffer, congestion control, and codec negotiation.
-
-## ⚙️ Configuration
-Environment PORT override:
-```bash
-PORT=8080 npm start
-```
-Change STUN? Edit the `iceServers` array in `script.js` & `listen.html`.
+**Frontend Listener (`public/listen.js`)**
+- WHEP Client for egress.
+- Applies `playoutDelayHint` based on host tuning settings.
 
 ## 🚨 Security
 - Intended for trusted local networks only.
 - No auth / encryption beyond WebRTC DTLS + HTTPS (if you add TLS).
-- Don’t expose publicly without adding authentication & HTTPS termination.
 
-## � Troubleshooting
+##  Troubleshooting
 | Symptom | Fix |
 |---------|-----|
-| Listener shows "No host" | Host hasn’t clicked Share yet or host tab closed. |
+| Host fails to stream | Ensure MediaMTX is running on port 8889. |
+| Listener shows "Failed to connect" | Ensure MediaMTX is reachable via the LAN IP on port 8889. Check firewall. |
 | No audio after sharing | Ensure "Share audio" was ticked; re‑start and pick the full screen. |
-| Works on host, silent on phone | Phone muted / autoplay blocked: tap Enable Audio again. |
-| Frequent disconnects | Wi‑Fi instability – keep devices closer to router; reduce other traffic. |
-| High latency | Use 5GHz Wi‑Fi; close other heavy network apps. |
-| ICE failed | Corporate / restrictive NAT – add TURN server (not included). |
-
-## 🧪 Extending
-- Add TURN for wider NAT traversal (e.g. `coturn`).
-- Real analyser‑based visualizer on listener side using AudioContext.
-- Optional auth token to restrict who can join.
-- Single mixed stream approach (SFU) if scaling to dozens+ listeners.
-
-## 🎯 Use Cases
-- Share movie / music audio around the house.
-- Classroom / study group synchronized audio.
-- Quick demo / presentation sound distribution.
-- Quiet listening (headphones on devices instead of speakers).
-
-## 🔄 Updating
-```bash
-git pull
-npm install
-npm restart   # or stop + start
-```
+| Frequent disconnects / Stutter | Adjust latency higher (e.g. 300ms) or bitrate lower via the Host Tuning UI. |
 
 ## 🙌 Enjoy
 Happy low‑latency streaming! 🔊

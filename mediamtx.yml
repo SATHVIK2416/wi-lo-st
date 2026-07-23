@@ -1,0 +1,11 @@
+webrtc: yes
+webrtcAddress: :8889
+webrtcICEUDPMuxAddress: :8189
+webrtcICETCPMuxAddress: :8189
+
+api: yes
+apiAddress: :9997
+
+paths:
+  live:
+    runOnReady: ""

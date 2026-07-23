@@ -122,22 +122,8 @@ io.on('connection', (socket) => {
   });
 
   socket.on('viewer-join', () => {
-    if (!hostSocketId) return socket.emit('no-host');
     viewers.set(socket.id, { createdAt: Date.now() });
-    io.to(hostSocketId).emit('viewer-joined', { viewerId: socket.id });
     broadcastStats();
-  });
-
-  socket.on('webrtc-offer', ({ viewerId, sdp }) => {
-    io.to(viewerId).emit('webrtc-offer', { sdp, hostId: socket.id });
-  });
-
-  socket.on('webrtc-answer', ({ hostId, sdp }) => {
-    io.to(hostId).emit('webrtc-answer', { sdp, viewerId: socket.id });
-  });
-
-  socket.on('webrtc-ice-candidate', ({ targetId, candidate }) => {
-    if (targetId) io.to(targetId).emit('webrtc-ice-candidate', { candidate, from: socket.id });
   });
 
   socket.on('listener-stats', (payload) => {
@@ -146,9 +132,7 @@ io.on('connection', (socket) => {
     io.to(hostSocketId).emit('listener-stats', { viewerId: socket.id, ...payload });
   });
 
-  socket.on('disconnect-viewer', ({ viewerId }) => {
-    if (viewers.has(viewerId)) io.to(viewerId).emit('disconnect-request');
-  });
+
 
   socket.on('tune-settings', (payload) => {
     if (socket.id !== hostSocketId) return;
