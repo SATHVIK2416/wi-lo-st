@@ -1,10 +1,12 @@
-// Wi-Lo-St Core Client JavaScript Application
+// Wi-Lo-St Core Client JavaScript Application (v2 - Crack/Pop Fixed)
 document.addEventListener('DOMContentLoaded', () => {
-  // DOM Elements
+  // =============================================
+  // 1. DOM ELEMENT REFERENCES (all at top)
+  // =============================================
   const tabBtns = document.querySelectorAll('.tab-btn');
   const tabPanels = document.querySelectorAll('.tab-panel');
 
-  // Stream Configuration Inputs
+  // Stream Config Inputs
   const osSelect = document.getElementById('os-select');
   const multicastIpInput = document.getElementById('multicast-ip');
   const multicastPortInput = document.getElementById('multicast-port');
@@ -15,21 +17,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const deviceNameInput = document.getElementById('device-name');
   const deviceOverrideGroup = document.getElementById('device-override-group');
 
-  // Command Output Elements
+  // Command Outputs
   const cmdServerOutput = document.getElementById('cmd-server-output');
   const cmdClientOutput = document.getElementById('cmd-client-output');
   const btnCopyServerCmd = document.getElementById('btn-copy-server-cmd');
-  const btnCopyClientCmd = document.getElementById('btn-copy-client-cmd');
-  const btnWebBroadcast = document.getElementById('btn-web-broadcast');
+  const btnCopyClientCmd = document.getElementById('btn-copy-client-cmd'); // added in HTML
 
-  // Header Elements
+  // Header Status
   const broadcastBadge = document.getElementById('broadcast-badge');
   const broadcastStatusText = document.getElementById('broadcast-status-text');
   const connectedCount = document.getElementById('connected-count');
   const latencyVal = document.getElementById('latency-val');
   const ipAddressList = document.getElementById('ip-address-list');
 
-  // Receiver Elements
+  // Receiver Controls
   const btnStartAudio = document.getElementById('btn-start-audio');
   const playPrompt = document.getElementById('play-prompt');
   const visualWave = document.getElementById('visual-wave');
@@ -42,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const delayOffsetVal = document.getElementById('delay-offset-val');
   const bufferMs = document.getElementById('buffer-ms');
 
-  // Sync Calibrator Elements
+  // Sync Calibrator
   const syncFlashBox = document.getElementById('sync-flash-box');
   const syncFlashText = document.getElementById('sync-flash-text');
   const btnTogglePulse = document.getElementById('btn-toggle-pulse');
@@ -50,7 +51,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnDelayPlus = document.getElementById('btn-delay-plus');
   const calibDelayDisplay = document.getElementById('calib-delay-display');
 
-  // Web Audio Context & Visualizer state
+  // Broadcast Buttons
+  const btnWebBroadcast = document.getElementById('btn-web-broadcast');
+  const btnScreenBroadcast = document.getElementById('btn-screen-broadcast');
+  const btnSynthBroadcast = document.getElementById('btn-synth-broadcast');
+  const secureNotice = document.getElementById('secure-notice');
+
+  // =============================================
+  // 2. STATE VARIABLES
+  // =============================================
   let audioCtx = null;
   let gainNode = null;
   let delayNode = null;
@@ -61,28 +70,39 @@ document.addEventListener('DOMContentLoaded', () => {
   let pulseInterval = null;
   let pingInterval = null;
 
-  // 1. Tab Switching Logic
+  // Ring buffer & worklet/fallback
+  let ringBufferStorage = new Float32Array(48000 * 2);
+  let ringWritePos = 0;
+  let ringReadPos = 0;
+  let ringAvailable = 0;
+  let workletNode = null;
+  let fallbackProcessor = null;
+  let dummyInputNode = null;
+  let silenceTimeout = null;
+
+  // =============================================
+  // 3. TAB SWITCHING
+  // =============================================
   tabBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       const targetTab = btn.getAttribute('data-tab');
       tabBtns.forEach(b => b.classList.remove('active'));
       tabPanels.forEach(p => p.classList.remove('active'));
-
       btn.classList.add('active');
       document.getElementById(targetTab).classList.add('active');
     });
   });
 
-  // 2. Fetch Server Network Info
+  // =============================================
+  // 4. SERVER INFO & GStreamer COMMAND GENERATOR
+  // =============================================
   async function fetchServerInfo() {
     try {
       const res = await fetch('/api/info');
       const data = await res.json();
-      
       const p = data.portHttp || data.port || window.location.port || 3000;
       const pSsl = data.portHttps || 3443;
 
-      // Populate LAN IPs
       if (data.localIps && data.localIps.length > 0) {
         ipAddressList.innerHTML = data.localIps.map(ip => `
           <div class="ip-pill"><i class="fa-solid fa-wifi"></i> http://${ip.address}:${p}</div>
@@ -91,30 +111,28 @@ document.addEventListener('DOMContentLoaded', () => {
         ipAddressList.innerHTML = `<div class="ip-pill">http://localhost:${p}</div>`;
       }
 
-      // Update secure notice text with quick links
-      if (secureNotice && !window.isSecureContext && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      if (secureNotice && !window.isSecureContext && 
+          window.location.hostname !== 'localhost' && 
+          window.location.hostname !== '127.0.0.1') {
         secureNotice.innerHTML = `
           <i class="fa-solid fa-shield-halved"></i>
-          <span><b>Host Laptop Note:</b> Browser Web Audio Capture requires running on <a href="http://localhost:${p}" style="color: var(--accent-cyan); font-weight: 700; text-decoration: underline;">http://localhost:${p}</a> or <a href="https://${window.location.hostname}:${pSsl}" style="color: var(--accent-cyan); font-weight: 700; text-decoration: underline;">https://${window.location.hostname}:${pSsl}</a></span>
+          <span><b>Host Laptop Note:</b> Browser Web Audio Capture requires running on 
+          <a href="http://localhost:${p}" style="color: var(--accent-cyan); font-weight: 700; text-decoration: underline;">http://localhost:${p}</a> or 
+          <a href="https://${window.location.hostname}:${pSsl}" style="color: var(--accent-cyan); font-weight: 700; text-decoration: underline;">https://${window.location.hostname}:${pSsl}</a></span>
         `;
         secureNotice.style.display = 'flex';
       }
 
-      // Detect OS default
-      if (data.platform === 'win32') {
-        osSelect.value = 'windows';
-      } else if (data.platform === 'darwin') {
-        osSelect.value = 'macOS';
-      } else {
-        osSelect.value = 'linux';
-      }
+      if (data.platform === 'win32') osSelect.value = 'windows';
+      else if (data.platform === 'darwin') osSelect.value = 'macOS';
+      else osSelect.value = 'linux';
+
       updateGStreamerCommands();
     } catch (e) {
-      console.warn('Unable to connect to server info API, using fallback UI defaults.');
+      console.warn('Unable to fetch server info, using defaults');
     }
   }
 
-  // 3. GStreamer Command Builder Update
   function updateGStreamerCommands() {
     const os = osSelect.value;
     const host = multicastIpInput.value.trim() || '224.0.0.1';
@@ -125,13 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const customDevice = deviceNameInput.value.trim();
 
     bitrateDisplay.textContent = `${Math.round(bitrate / 1000)} kbps`;
-
-    // Toggle custom device input visibility for Linux / macOS
-    if (os === 'linux' || os === 'macOS') {
-      deviceOverrideGroup.style.display = 'block';
-    } else {
-      deviceOverrideGroup.style.display = 'none';
-    }
+    deviceOverrideGroup.style.display = (os === 'linux' || os === 'macOS') ? 'block' : 'none';
 
     let serverCmd = '';
     let clientCmd = `gst-launch-1.0 -v udpsrc multicast-group=${host} port=${port} caps="application/x-rtp,media=audio,clock-rate=48000,encoding-name=OPUS" ! rtpjitterbuffer latency=${jitter} ! rtpopusdepay ! opusdec ! audioconvert ! audioresample ! autoaudiosink`;
@@ -150,36 +162,35 @@ document.addEventListener('DOMContentLoaded', () => {
     cmdClientOutput.textContent = clientCmd;
   }
 
-  // Event Listeners for form inputs
-  osSelect.addEventListener('change', updateGStreamerCommands);
-  multicastIpInput.addEventListener('input', updateGStreamerCommands);
-  multicastPortInput.addEventListener('input', updateGStreamerCommands);
-  opusBitrateInput.addEventListener('input', updateGStreamerCommands);
-  frameSizeSelect.addEventListener('change', updateGStreamerCommands);
-  jitterBufInput.addEventListener('input', updateGStreamerCommands);
-  deviceNameInput.addEventListener('input', updateGStreamerCommands);
+  // Input listeners for dynamic updates
+  [osSelect, multicastIpInput, multicastPortInput, opusBitrateInput, 
+   frameSizeSelect, jitterBufInput, deviceNameInput].forEach(el => {
+    el.addEventListener('input', updateGStreamerCommands);
+    el.addEventListener('change', updateGStreamerCommands);
+  });
 
-  // Copy command button
+  // Copy command buttons
   btnCopyServerCmd.addEventListener('click', () => {
     navigator.clipboard.writeText(cmdServerOutput.textContent);
     btnCopyServerCmd.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
-    setTimeout(() => {
-      btnCopyServerCmd.innerHTML = '<i class="fa-solid fa-copy"></i> Copy Server Cmd';
-    }, 2000);
+    setTimeout(() => { btnCopyServerCmd.innerHTML = '<i class="fa-solid fa-copy"></i> Copy GStreamer Cmd'; }, 2000);
   });
 
   if (btnCopyClientCmd) {
     btnCopyClientCmd.addEventListener('click', () => {
       navigator.clipboard.writeText(cmdClientOutput.textContent);
       btnCopyClientCmd.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
-      setTimeout(() => {
-        btnCopyClientCmd.innerHTML = '<i class="fa-solid fa-copy"></i> Copy Client Cmd';
-      }, 2000);
+      setTimeout(() => { btnCopyClientCmd.innerHTML = '<i class="fa-solid fa-copy"></i>'; }, 2000);
     });
   }
 
-  // 4. WebSocket Setup & Ping Measurement
+  // =============================================
+  // 5. WEBSOCKET & NETWORK
+  // =============================================
   function initWebSocket() {
+    if (ws) {
+      try { ws.close(); } catch(e) {}
+    }
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}`;
     ws = new WebSocket(wsUrl);
@@ -195,12 +206,13 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
           const msg = JSON.parse(event.data);
           if (msg.type === 'pong') {
-            const rtt = Math.max(1, Date.now() - msg.timestamp);
-            latencyVal.textContent = rtt;
+            latencyVal.textContent = Math.max(1, Date.now() - msg.timestamp);
           } else if (msg.type === 'stats_update') {
             connectedCount.textContent = msg.stats.activeClients || 0;
             if (msg.stats.isBroadcasting) {
               setBroadcastState(true, 'Broadcasting Live Audio');
+            } else {
+              setBroadcastState(false, 'Server Ready');
             }
           }
         } catch (e) {}
@@ -236,71 +248,62 @@ document.addEventListener('DOMContentLoaded', () => {
       broadcastStatusText.textContent = text;
     } else {
       broadcastBadge.className = 'status-badge idle';
-      broadcastStatusText.textContent = 'Server Ready';
+      broadcastStatusText.textContent = text;
     }
   }
 
-  // Dedicated High-Priority Audio Render Thread Worklet Code
+  // =============================================
+  // 6. AUDIO WORKLET & FALLBACK RING BUFFER
+  // =============================================
   const workletCode = `
-class RingBufferWorklet extends AudioWorkletProcessor {
-  constructor() {
-    super();
-    this.capacity = 48000 * 2;
-    this.buffer = new Float32Array(this.capacity);
-    this.readIndex = 0;
-    this.writeIndex = 0;
-    this.count = 0;
-
-    this.port.onmessage = (e) => {
-      if (e.data.type === 'audio') {
-        const samples = e.data.samples;
-        for (let i = 0; i < samples.length; i++) {
-          this.buffer[this.writeIndex] = samples[i];
-          this.writeIndex = (this.writeIndex + 1) % this.capacity;
-          if (this.count < this.capacity) {
-            this.count++;
-          } else {
-            this.readIndex = (this.readIndex + 1) % this.capacity;
-          }
-        }
-      } else if (e.data.type === 'clear') {
-        this.buffer.fill(0);
+    class RingBufferWorklet extends AudioWorkletProcessor {
+      constructor() {
+        super();
+        this.capacity = 48000 * 2;
+        this.buffer = new Float32Array(this.capacity);
         this.readIndex = 0;
         this.writeIndex = 0;
         this.count = 0;
+
+        this.port.onmessage = (e) => {
+          if (e.data.type === 'audio') {
+            const samples = e.data.samples;
+            for (let i = 0; i < samples.length; i++) {
+              this.buffer[this.writeIndex] = samples[i];
+              this.writeIndex = (this.writeIndex + 1) % this.capacity;
+              if (this.count < this.capacity) {
+                this.count++;
+              } else {
+                this.readIndex = (this.readIndex + 1) % this.capacity;
+              }
+            }
+          } else if (e.data.type === 'clear') {
+            this.buffer.fill(0);
+            this.readIndex = 0;
+            this.writeIndex = 0;
+            this.count = 0;
+          }
+        };
       }
-    };
-  }
 
-  process(inputs, outputs) {
-    const output = outputs[0];
-    if (!output || !output[0]) return true;
-    const channel = output[0];
-
-    for (let i = 0; i < channel.length; i++) {
-      if (this.count > 0) {
-        channel[i] = this.buffer[this.readIndex];
-        this.readIndex = (this.readIndex + 1) % this.capacity;
-        this.count--;
-      } else {
-        channel[i] = 0.0; // Dead silence on dedicated thread - ZERO popping!
+      process(inputs, outputs) {
+        const output = outputs[0];
+        if (!output || !output[0]) return true;
+        const channel = output[0];
+        for (let i = 0; i < channel.length; i++) {
+          if (this.count > 0) {
+            channel[i] = this.buffer[this.readIndex];
+            this.readIndex = (this.readIndex + 1) % this.capacity;
+            this.count--;
+          } else {
+            channel[i] = 0.0;
+          }
+        }
+        return true;
       }
     }
-    return true;
-  }
-}
-registerProcessor('ring-buffer-worklet', RingBufferWorklet);
-`;
-
-  // Ring Buffer for fallback audio processing
-  let ringBufferStorage = new Float32Array(48000 * 2);
-  let ringWritePos = 0;
-  let ringReadPos = 0;
-  let ringAvailable = 0;
-  let workletNode = null;
-  let fallbackProcessor = null;
-  let dummyInputNode = null;
-  let silenceTimeout = null;
+    registerProcessor('ring-buffer-worklet', RingBufferWorklet);
+  `;
 
   function pushToRingBuffer(samples) {
     for (let i = 0; i < samples.length; i++) {
@@ -321,7 +324,7 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
         ringReadPos = (ringReadPos + 1) % ringBufferStorage.length;
         ringAvailable--;
       } else {
-        output[i] = 0.0; // Clean silence when idle
+        output[i] = 0.0;
       }
     }
   }
@@ -333,7 +336,9 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
     ringAvailable = 0;
   }
 
-  // Stop & Disconnect Receiver Engine Completely
+  // =============================================
+  // 7. RECEIVER START / STOP (CLEAN)
+  // =============================================
   function stopAudioReceiver() {
     isReceivingAudio = false;
     clearRingBuffer();
@@ -343,43 +348,44 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
       silenceTimeout = null;
     }
 
+    // Smoothly fade out
     if (gainNode) {
-      try { gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02); } catch (e) {}
-      try { gainNode.disconnect(); } catch (e) {}
-    }
-    if (delayNode) {
-      try { delayNode.disconnect(); } catch (e) {}
-    }
-    if (fallbackProcessor) {
-      try { fallbackProcessor.disconnect(); } catch (e) {}
-    }
-    if (workletNode) {
-      try { workletNode.disconnect(); } catch (e) {}
-    }
-    if (dummyInputNode) {
-      try { dummyInputNode.stop(); dummyInputNode.disconnect(); } catch (e) {}
+      try { gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.02); } catch(e) {}
     }
 
-    // Fully wipe node references so they are recreated fresh next time
-    workletNode = null;
-    fallbackProcessor = null;
-    dummyInputNode = null;
-    gainNode = null;
-    delayNode = null;
-    analyser = null;
+    // Disconnect and nullify all processing nodes
+    if (dummyInputNode) {
+      try { dummyInputNode.stop(); } catch(e) {}
+      try { dummyInputNode.disconnect(); } catch(e) {}
+      dummyInputNode = null;
+    }
+    if (fallbackProcessor) {
+      try { fallbackProcessor.disconnect(); } catch(e) {}
+      fallbackProcessor = null;
+    }
+    if (workletNode) {
+      try { workletNode.disconnect(); } catch(e) {}
+      workletNode = null;
+    }
+    if (delayNode) {
+      try { delayNode.disconnect(); } catch(e) {}
+    }
+    if (gainNode) {
+      try { gainNode.disconnect(); } catch(e) {}
+    }
 
     playPrompt.style.display = 'flex';
     visualWave.classList.add('paused');
     playerStatus.textContent = 'Receiver Offline';
   }
 
-  // 5. Web Audio Receiver Engine
   btnStartAudio.addEventListener('click', async () => {
     if (isReceivingAudio) {
       stopAudioReceiver();
       return;
     }
 
+    // Initialize AudioContext if needed
     if (!audioCtx) {
       audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
     }
@@ -387,6 +393,7 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
       await audioCtx.resume();
     }
 
+    // Create fresh graph nodes
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 256;
 
@@ -396,11 +403,12 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
     delayNode = audioCtx.createDelay(1.0);
     delayNode.delayTime.value = Math.max(0, parseInt(audioDelayOffset.value) / 1000);
 
+    // Connect: worklet/fallback -> delay -> gain -> analyser -> destination
     delayNode.connect(gainNode);
     gainNode.connect(analyser);
     analyser.connect(audioCtx.destination);
 
-    // Attempt loading AudioWorklet
+    // Load AudioWorklet if possible
     if (!workletNode && audioCtx.audioWorklet) {
       try {
         const blob = new Blob([workletCode], { type: 'application/javascript' });
@@ -408,15 +416,17 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
         await audioCtx.audioWorklet.addModule(workletUrl);
         workletNode = new AudioWorkletNode(audioCtx, 'ring-buffer-worklet');
       } catch (err) {
-        console.warn('AudioWorklet module failed, using ScriptProcessor fallback:', err);
+        console.warn('AudioWorklet failed, using ScriptProcessor fallback:', err);
       }
     }
 
-    // Always create fallback processor if worklet is not connected yet
+    // Fallback processor
     if (!workletNode && !fallbackProcessor) {
+      // Try zero input channels first
       try {
         fallbackProcessor = audioCtx.createScriptProcessor(2048, 0, 1);
       } catch (e) {
+        // Some browsers require at least one input channel
         fallbackProcessor = audioCtx.createScriptProcessor(2048, 1, 1);
         const dummyBuf = audioCtx.createBuffer(1, 2048, audioCtx.sampleRate);
         dummyInputNode = audioCtx.createBufferSource();
@@ -425,14 +435,13 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
         dummyInputNode.start();
         dummyInputNode.connect(fallbackProcessor);
       }
-
       fallbackProcessor.onaudioprocess = (e) => {
         const out = e.outputBuffer.getChannelData(0);
         readFromRingBuffer(out);
       };
     }
 
-    // Connect the active engine to the graph
+    // Connect active engine to graph
     if (workletNode) {
       workletNode.connect(delayNode);
     } else if (fallbackProcessor) {
@@ -447,7 +456,9 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
     startVisualizerCanvas();
   });
 
-
+  // =============================================
+  // 8. VOLUME & DELAY CONTROLS (SMOOTH)
+  // =============================================
   volumeControl.addEventListener('input', () => {
     const val = parseFloat(volumeControl.value);
     volumeVal.textContent = `${Math.round(val * 100)}%`;
@@ -462,26 +473,26 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
   });
 
   audioDelayOffset.addEventListener('input', () => {
-    delayOffsetVal.textContent = `${audioDelayOffset.value} ms`;
-    calibDelayDisplay.textContent = `${audioDelayOffset.value} ms`;
+    const ms = parseInt(audioDelayOffset.value);
+    delayOffsetVal.textContent = `${ms} ms`;
+    calibDelayDisplay.textContent = `${ms} ms`; // keep calibrator display in sync
     if (delayNode) {
-      delayNode.delayTime.value = Math.max(0, parseInt(audioDelayOffset.value) / 1000);
+      delayNode.delayTime.value = Math.max(0, ms / 1000);
     }
   });
 
+  // =============================================
+  // 9. HIGH-QUALITY ASYNC AUDIO PACKET PLAYBACK (FIXED)
+  // =============================================
   async function playAudioPacket(arrayBuffer) {
     if (!audioCtx || !isReceivingAudio) return;
     try {
-      if (audioCtx.state === 'suspended') {
-        await audioCtx.resume();
-      }
-
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
       if (arrayBuffer.byteLength <= 4) return;
 
       const view = new DataView(arrayBuffer);
       let packetSampleRate = 48000;
       let pcmOffset = 0;
-
       const headerRate = view.getUint32(0, true);
       if (headerRate >= 8000 && headerRate <= 192000) {
         packetSampleRate = headerRate;
@@ -494,44 +505,49 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
       const targetSampleRate = audioCtx.sampleRate;
       let float32;
 
+      // Resample if necessary using OfflineAudioContext (high quality)
       if (packetSampleRate !== targetSampleRate) {
-        // Resample using OfflineAudioContext (high-quality sinc interpolation)
-        const offlineCtx = new window.OfflineAudioContext(1, int16.length, packetSampleRate);
+        const offlineCtx = new OfflineAudioContext(1, int16.length, packetSampleRate);
         const buffer = offlineCtx.createBuffer(1, int16.length, packetSampleRate);
         const data = buffer.getChannelData(0);
         for (let i = 0; i < int16.length; i++) {
-          data[i] = int16[i] / 32768.0;
+          data[i] = int16[i] / 32768.0; // int16 to float
         }
         const source = offlineCtx.createBufferSource();
         source.buffer = buffer;
         source.connect(offlineCtx.destination);
         source.start();
-
         const rendered = await offlineCtx.startRendering();
         float32 = rendered.getChannelData(0);
       } else {
-        // No resampling needed
+        // No resampling needed, just convert
         float32 = new Float32Array(int16.length);
         for (let i = 0; i < int16.length; i++) {
           float32[i] = int16[i] / 32768.0;
         }
       }
 
-      // Ensure gain is set to target volume directly when live audio is active
-      if (gainNode) {
-        const target = parseFloat(volumeControl.value || 1.0);
-        gainNode.gain.setTargetAtTime(target, audioCtx.currentTime, 0.05);
+      // Apply soft clipping
+      for (let i = 0; i < float32.length; i++) {
+        if (float32[i] > 0.95) float32[i] = 0.95 + (float32[i] - 0.95) * 0.1;
+        if (float32[i] < -0.95) float32[i] = -0.95 + (float32[i] + 0.95) * 0.1;
       }
 
-      // Silence watchdog: if no audio arrives for 300ms, mute gain and clear ring buffer
+      // Smooth gain (avoids clicks)
+      if (gainNode) {
+        const targetVol = parseFloat(volumeControl.value || 1.0);
+        gainNode.gain.setTargetAtTime(targetVol, audioCtx.currentTime, 0.02);
+      }
+
+      // Silence watchdog: if no audio for 300ms, fade out and clear
       if (silenceTimeout) clearTimeout(silenceTimeout);
       silenceTimeout = setTimeout(() => {
-        if (gainNode) gainNode.gain.value = 0;
+        if (gainNode) gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.03);
         clearRingBuffer();
         if (workletNode) workletNode.port.postMessage({ type: 'clear' });
       }, 300);
 
-      // Route to Worklet OR Fallback RingBuffer (NEVER BOTH AT THE SAME TIME!)
+      // Route to worklet or fallback buffer
       if (workletNode) {
         workletNode.port.postMessage({ type: 'audio', samples: float32 });
       } else {
@@ -542,11 +558,9 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
     }
   }
 
-  // 6. Web Audio Direct Broadcaster (Browser Loopback / Mic Streamer / Synth Test)
-  const btnScreenBroadcast = document.getElementById('btn-screen-broadcast');
-  const btnSynthBroadcast = document.getElementById('btn-synth-broadcast');
-  const secureNotice = document.getElementById('secure-notice');
-
+  // =============================================
+  // 10. BROADCASTER (MIC / SCREEN / SYNTH) - FULLY CLEANED
+  // =============================================
   let activeBroadcastStream = null;
   let activeBroadcastCtx = null;
   let synthOscillator = null;
@@ -569,35 +583,28 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
 
   function startAudioStreamProcessing(stream) {
     stopBroadcastEngine();
+    isWebBroadcasting = true; // RE-ENABLE after stopBroadcastEngine wipes it
     activeBroadcastStream = stream;
     activeBroadcastCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
     if (activeBroadcastCtx.state === 'suspended') activeBroadcastCtx.resume();
 
     const source = activeBroadcastCtx.createMediaStreamSource(stream);
-    
-    // Buffer size 2048 for smooth WebSocket packet delivery without underrun cracking
     const processor = activeBroadcastCtx.createScriptProcessor(2048, 1, 1);
-    
     source.connect(processor);
-    // Silent gain node to avoid laptop speaker loopback echo
+
+    // Mute local speakers
     const muteGain = activeBroadcastCtx.createGain();
     muteGain.gain.value = 0;
     processor.connect(muteGain);
     muteGain.connect(activeBroadcastCtx.destination);
 
     const sampleRate = activeBroadcastCtx.sampleRate || 48000;
-
     processor.onaudioprocess = (e) => {
       if (ws && ws.readyState === WebSocket.OPEN && isWebBroadcasting) {
         const inputData = e.inputBuffer.getChannelData(0);
-        const packetLength = 4 + inputData.length * 2;
-        const packet = new ArrayBuffer(packetLength);
+        const packet = new ArrayBuffer(4 + inputData.length * 2);
         const dataView = new DataView(packet);
-        
-        // Write 4-byte sample rate header
         dataView.setUint32(0, sampleRate, true);
-        
-        // Write PCM16 data
         const pcm16 = new Int16Array(packet, 4);
         for (let i = 0; i < inputData.length; i++) {
           pcm16[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
@@ -607,52 +614,45 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
     };
   }
 
-
   function handleSecureContextCheck() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      const port = window.location.port || 3000;
-      window.location.href = `http://localhost:${port}`;
+      alert('Your browser does not support media capture. Please use a modern browser and ensure the page is served over HTTPS or localhost.');
       return false;
     }
     return true;
   }
 
-  // Mic / Input Broadcast
+  // Mic Broadcast
   btnWebBroadcast.addEventListener('click', async () => {
     if (!isWebBroadcasting) {
       if (!handleSecureContextCheck()) return;
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
-        isWebBroadcasting = true;
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } 
+        });
         startAudioStreamProcessing(stream);
-
-        btnWebBroadcast.classList.remove('btn-primary');
-        btnWebBroadcast.classList.add('btn-secondary');
+        btnWebBroadcast.classList.replace('btn-primary', 'btn-secondary');
         btnWebBroadcast.innerHTML = '<i class="fa-solid fa-stop"></i> Stop Broadcast';
         setBroadcastState(true, 'Mic Audio Broadcasting');
       } catch (err) {
-        alert('Could not capture audio stream: ' + err.message);
+        alert('Could not capture microphone: ' + err.message);
       }
     } else {
       stopBroadcastEngine();
-      btnWebBroadcast.classList.remove('btn-secondary');
-      btnWebBroadcast.classList.add('btn-primary');
+      btnWebBroadcast.classList.replace('btn-secondary', 'btn-primary');
       btnWebBroadcast.innerHTML = '<i class="fa-solid fa-microphone-lines"></i> Start Mic/Audio Broadcast';
       setBroadcastState(false, 'Server Ready');
     }
   });
 
-  // Movie Tab / Screen Loopback Capture
+  // Screen / Movie Tab Broadcast
   btnScreenBroadcast.addEventListener('click', async () => {
     if (!isWebBroadcasting) {
       if (!handleSecureContextCheck()) return;
       try {
         const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-        isWebBroadcasting = true;
         startAudioStreamProcessing(stream);
-
-        btnScreenBroadcast.classList.remove('btn-secondary');
-        btnScreenBroadcast.classList.add('btn-primary');
+        btnScreenBroadcast.classList.replace('btn-secondary', 'btn-primary');
         btnScreenBroadcast.innerHTML = '<i class="fa-solid fa-stop"></i> Stop Movie Tab Broadcast';
         setBroadcastState(true, 'Screen Audio Broadcasting');
       } catch (err) {
@@ -660,41 +660,38 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
       }
     } else {
       stopBroadcastEngine();
-      btnScreenBroadcast.classList.remove('btn-secondary');
-      btnScreenBroadcast.classList.add('btn-primary');
+      btnScreenBroadcast.classList.replace('btn-primary', 'btn-secondary');
       btnScreenBroadcast.innerHTML = '<i class="fa-solid fa-desktop"></i> Broadcast Movie Tab Audio';
       setBroadcastState(false, 'Server Ready');
     }
   });
 
-  // Synth Test Tone Broadcast
+  // Synth Test Tone
   btnSynthBroadcast.addEventListener('click', () => {
     if (!isWebBroadcasting) {
-      isWebBroadcasting = true;
       stopBroadcastEngine();
+      isWebBroadcasting = true; // RE-ENABLE after wipe
       activeBroadcastCtx = new (window.AudioContext || window.webkitAudioContext)();
       if (activeBroadcastCtx.state === 'suspended') activeBroadcastCtx.resume();
-      
+
       synthOscillator = activeBroadcastCtx.createOscillator();
       synthOscillator.type = 'sine';
-      synthOscillator.frequency.value = 440; // A4 pure tone
-      
+      synthOscillator.frequency.value = 440;
+
       const processor = activeBroadcastCtx.createScriptProcessor(2048, 1, 1);
       synthOscillator.connect(processor);
-      
+
       const muteGain = activeBroadcastCtx.createGain();
       muteGain.gain.value = 0;
       processor.connect(muteGain);
       muteGain.connect(activeBroadcastCtx.destination);
-      
-      synthOscillator.start();
 
+      synthOscillator.start();
       const sampleRate = activeBroadcastCtx.sampleRate || 48000;
       processor.onaudioprocess = (e) => {
         if (ws && ws.readyState === WebSocket.OPEN && isWebBroadcasting) {
           const inputData = e.inputBuffer.getChannelData(0);
-          const packetLength = 4 + inputData.length * 2;
-          const packet = new ArrayBuffer(packetLength);
+          const packet = new ArrayBuffer(4 + inputData.length * 2);
           const dataView = new DataView(packet);
           dataView.setUint32(0, sampleRate, true);
           const pcm16 = new Int16Array(packet, 4);
@@ -705,29 +702,34 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
         }
       };
 
-      btnSynthBroadcast.classList.remove('btn-primary');
-      btnSynthBroadcast.classList.add('btn-secondary');
+      btnSynthBroadcast.classList.replace('btn-primary', 'btn-secondary');
       btnSynthBroadcast.innerHTML = '<i class="fa-solid fa-stop"></i> Stop Synth Tone';
       setBroadcastState(true, 'Synth Tone Broadcasting');
     } else {
       isWebBroadcasting = false;
       if (synthOscillator) {
         try { synthOscillator.stop(); synthOscillator.disconnect(); } catch(e) {}
+        synthOscillator = null;
       }
       if (activeBroadcastCtx) {
         try { activeBroadcastCtx.close(); } catch(e) {}
+        activeBroadcastCtx = null;
       }
-      btnSynthBroadcast.classList.remove('btn-secondary');
-      btnSynthBroadcast.classList.add('btn-primary');
+      btnSynthBroadcast.classList.replace('btn-secondary', 'btn-primary');
       btnSynthBroadcast.innerHTML = '<i class="fa-solid fa-wave-square"></i> Broadcast Test Tone';
       setBroadcastState(false, 'Server Ready');
     }
   });
-  // 7. Visualizer Canvas Animation
+
+  // =============================================
+  // 11. VISUALIZER CANVAS (WITH RESIZE)
+  // =============================================
   function startVisualizerCanvas() {
     const canvas = document.getElementById('visualizer-canvas');
     const ctx = canvas.getContext('2d');
-    
+    const bufferLength = analyser ? analyser.frequencyBinCount : 64;
+    const dataArray = new Uint8Array(bufferLength);
+
     function resizeCanvas() {
       canvas.width = canvas.offsetWidth;
       canvas.height = canvas.offsetHeight;
@@ -735,27 +737,19 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
     window.addEventListener('resize', resizeCanvas);
     resizeCanvas();
 
-    const bufferLength = analyser ? analyser.frequencyBinCount : 64;
-    const dataArray = new Uint8Array(bufferLength);
-
     function renderFrame() {
       requestAnimationFrame(renderFrame);
       if (!analyser) return;
-
       analyser.getByteFrequencyData(dataArray);
-
       ctx.fillStyle = '#050811';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-
       const barWidth = (canvas.width / bufferLength) * 2.5;
       let x = 0;
-
       for (let i = 0; i < bufferLength; i++) {
         const barHeight = (dataArray[i] / 255) * canvas.height * 0.8;
         const gradient = ctx.createLinearGradient(0, canvas.height, 0, 0);
         gradient.addColorStop(0, '#00f2fe');
         gradient.addColorStop(1, '#7f00ff');
-
         ctx.fillStyle = gradient;
         ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
         x += barWidth + 2;
@@ -764,7 +758,9 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
     renderFrame();
   }
 
-  // 8. Lip-Sync Calibrator Engine
+  // =============================================
+  // 12. LIP-SYNC CALIBRATOR (FULLY FUNCTIONAL)
+  // =============================================
   btnTogglePulse.addEventListener('click', () => {
     if (!pulseInterval) {
       btnTogglePulse.innerHTML = '<i class="fa-solid fa-square"></i> Stop Calibration Pulse';
@@ -779,6 +775,7 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
     }
   });
 
+  // Buttons directly adjust the delay slider
   btnDelayMinus.addEventListener('click', () => {
     let currentVal = parseInt(audioDelayOffset.value);
     let newVal = Math.max(0, currentVal - 5);
@@ -794,13 +791,11 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
   });
 
   function triggerSyncPulse() {
-    // 1. Flash visual canvas box
+    // Flash visual
     syncFlashBox.classList.add('flash');
-    setTimeout(() => {
-      syncFlashBox.classList.remove('flash');
-    }, 80);
+    setTimeout(() => syncFlashBox.classList.remove('flash'), 80);
 
-    // 2. Play sharp 1000Hz audio beep tone on AudioContext
+    // Play beep through the same delayNode (so it respects the slider)
     if (audioCtx) {
       const osc = audioCtx.createOscillator();
       const toneGain = audioCtx.createGain();
@@ -810,23 +805,24 @@ registerProcessor('ring-buffer-worklet', RingBufferWorklet);
       toneGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
 
       osc.connect(toneGain);
-      if (delayNode && isReceivingAudio) {
-        toneGain.connect(delayNode);
+      if (delayNode) {
+        toneGain.connect(delayNode);  // <- goes through the same delay!
       } else {
         toneGain.connect(audioCtx.destination);
       }
-      osc.start(audioCtx.currentTime);
-      osc.stop(audioCtx.currentTime + 0.08);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.15);
     }
   }
 
-  // Helper copy function
+  // =============================================
+  // 13. INITIALIZATION
+  // =============================================
   window.copyText = function(id) {
     const text = document.getElementById(id).textContent;
     navigator.clipboard.writeText(text);
   };
 
-  // Initialize
   fetchServerInfo();
   initWebSocket();
 });
