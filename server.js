@@ -1,19 +1,30 @@
 const express = require('express');
 const http = require('http');
+const https = require('https');
 const WebSocket = require('ws');
 const os = require('os');
-const { spawn, exec } = require('child_process');
+const { spawn } = require('child_process');
 const path = require('path');
+const selfsigned = require('selfsigned');
 
-const PORT = process.env.PORT || 3030;
+const PORT_HTTP = parseInt(process.env.PORT || 3000);
+const PORT_HTTPS = parseInt(process.env.HTTPS_PORT || 3443);
+
 const app = express();
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
-
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Store active GST child process if launched via GUI
+// Generate dynamic SSL cert for HTTPS Secure Context on LAN
+const pems = selfsigned.generate([{ name: 'commonName', value: 'wi-lo-st.local' }], { days: 365 });
+const sslOptions = { key: pems.private, cert: pems.cert };
+
+const httpServer = http.createServer(app);
+const httpsServer = https.createServer(sslOptions, app);
+
+// Attach WebSocket servers to both HTTP and HTTPS
+const wssHttp = new WebSocket.Server({ server: httpServer });
+const wssHttps = new WebSocket.Server({ server: httpsServer });
+
 let activeGstProcess = null;
 let streamStats = {
   activeClients: 0,
@@ -30,13 +41,11 @@ let streamStats = {
   }
 };
 
-// Helper: Get local network IPv4 addresses
 function getLocalIpAddresses() {
   const interfaces = os.networkInterfaces();
   const addresses = [];
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name]) {
-      // Ignore IPv6 and internal loopback (127.0.0.1)
       if (iface.family === 'IPv4' && !iface.internal) {
         addresses.push({ interface: name, address: iface.address });
       }
@@ -51,7 +60,8 @@ app.get('/api/info', (req, res) => {
     platform: os.platform(),
     hostname: os.hostname(),
     localIps: getLocalIpAddresses(),
-    port: PORT,
+    portHttp: PORT_HTTP,
+    portHttps: PORT_HTTPS,
     stats: streamStats
   });
 });
@@ -81,121 +91,90 @@ app.get('/api/gstreamer-commands', (req, res) => {
   res.json(commands);
 });
 
-// Start/Stop GStreamer Server process via backend (Optional feature)
-app.post('/api/gstreamer/start', (req, res) => {
-  const { command } = req.body;
-  if (!command) return res.status(400).json({ error: 'Command missing' });
+function createAndStartServer(basePort, isHttps = false) {
+  let portToTry = basePort;
+  const srv = isHttps 
+    ? https.createServer(sslOptions, app) 
+    : http.createServer(app);
+  
+  const wss = new WebSocket.Server({ server: srv });
 
-  if (activeGstProcess) {
-    return res.status(400).json({ error: 'GStreamer process already running' });
-  }
-
-  try {
-    const parts = command.trim().split(/\s+/);
-    const cmd = parts[0];
-    const args = parts.slice(1);
-
-    activeGstProcess = spawn(cmd, args, { shell: true });
-    streamStats.isBroadcasting = true;
-    streamStats.startTime = Date.now();
-
-    activeGstProcess.on('error', (err) => {
-      console.error('GStreamer execution error:', err);
-      streamStats.isBroadcasting = false;
-      activeGstProcess = null;
-    });
-
-    activeGstProcess.on('exit', (code) => {
-      console.log(`GStreamer process exited with code ${code}`);
-      streamStats.isBroadcasting = false;
-      activeGstProcess = null;
-    });
-
-    res.json({ success: true, message: 'GStreamer pipeline started successfully.' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/gstreamer/stop', (req, res) => {
-  if (activeGstProcess) {
-    activeGstProcess.kill('SIGTERM');
-    activeGstProcess = null;
-    streamStats.isBroadcasting = false;
-    return res.json({ success: true, message: 'GStreamer process terminated.' });
-  }
-  res.json({ success: true, message: 'No process was running.' });
-});
-
-// WebSocket low-latency audio broadcasting & client synchronization
-wss.on('connection', (ws, req) => {
-  streamStats.activeClients++;
-  broadcastStats();
-
-  ws.on('message', (message, isBinary) => {
-    if (isBinary) {
-      // Audio packet relay to all listening web clients
-      streamStats.packetsSent++;
-      streamStats.bytesSent += message.length;
-      wss.clients.forEach((client) => {
-        if (client !== ws && client.readyState === WebSocket.OPEN) {
-          client.send(message, { binary: true });
-        }
-      });
-    } else {
-      try {
-        const data = JSON.parse(message.toString());
-        if (data.type === 'ping') {
-          ws.send(JSON.stringify({ type: 'pong', timestamp: data.timestamp, serverTime: Date.now() }));
-        } else if (data.type === 'config_update') {
-          streamStats.streamConfig = { ...streamStats.streamConfig, ...data.config };
-          broadcastStats();
-        }
-      } catch (e) {
-        // Invalid JSON or simple text
-      }
-    }
-  });
-
-  ws.on('close', () => {
-    streamStats.activeClients = Math.max(0, streamStats.activeClients - 1);
+  wss.on('connection', (ws) => {
+    streamStats.activeClients++;
     broadcastStats();
+
+    ws.on('message', (message, isBinary) => {
+      if (isBinary) {
+        streamStats.packetsSent++;
+        streamStats.bytesSent += message.length;
+        activeWssList.forEach(activeWss => {
+          activeWss.clients.forEach((client) => {
+            if (client !== ws && client.readyState === WebSocket.OPEN) {
+              client.send(message, { binary: true });
+            }
+          });
+        });
+      } else {
+        try {
+          const data = JSON.parse(message.toString());
+          if (data.type === 'ping') {
+            ws.send(JSON.stringify({ type: 'pong', timestamp: data.timestamp, serverTime: Date.now() }));
+          }
+        } catch (e) {}
+      }
+    });
+
+    ws.on('close', () => {
+      streamStats.activeClients = Math.max(0, streamStats.activeClients - 1);
+      broadcastStats();
+    });
   });
-});
 
-function broadcastStats() {
-  const payload = JSON.stringify({ type: 'stats_update', stats: streamStats });
-  wss.clients.forEach((client) => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(payload);
-    }
-  });
-}
+  activeWssList.push(wss);
 
-let currentPort = parseInt(process.env.PORT || 3030);
-
-function startServer(portToTry) {
-  server.removeAllListeners('error');
-  server.on('error', (err) => {
+  srv.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
-      console.log(`Port ${portToTry} in use, trying port ${portToTry + 1}...`);
-      startServer(portToTry + 1);
+      console.log(`Port ${portToTry} in use, trying ${portToTry + 1}...`);
+      createAndStartServer(portToTry + 1, isHttps);
     } else {
       console.error('Server error:', err);
     }
   });
 
-  server.listen(portToTry, () => {
+  wss.on('error', (err) => {
+    // Prevent unhandled wss error crashes when port is in use
+  });
+
+  srv.listen(portToTry, () => {
+    const proto = isHttps ? 'HTTPS' : 'HTTP';
+    const scheme = isHttps ? 'https' : 'http';
     console.log(`====================================================`);
-    console.log(` Wi-Lo-St Audio Streaming Server running on port ${portToTry}`);
-    console.log(` Local Network Access URLs:`);
+    console.log(` Wi-Lo-St Server running on ${proto} port ${portToTry}`);
+    console.log(` Access URLs:`);
+    console.log(`   ${scheme}://localhost:${portToTry}`);
     getLocalIpAddresses().forEach(ip => {
-      console.log(`   http://${ip.address}:${portToTry}`);
+      console.log(`   ${scheme}://${ip.address}:${portToTry}`);
     });
     console.log(`====================================================`);
   });
 }
 
-startServer(currentPort);
+const activeWssList = [];
+
+function broadcastStats() {
+  const payload = JSON.stringify({ type: 'stats_update', stats: streamStats });
+  activeWssList.forEach(wss => {
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(payload);
+      }
+    });
+  });
+}
+
+createAndStartServer(PORT_HTTP, false);
+createAndStartServer(PORT_HTTPS, true);
+
+
 
 
