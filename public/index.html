@@ -53,7 +53,7 @@
         <i class="fa-solid fa-stopwatch-20"></i> Lip-Sync Calibrator
       </button>
       <button class="tab-btn" data-tab="tab-guide">
-        <i class="fa-solid fa-book-bookmark"></i> GStreamer Guide
+        <i class="fa-solid fa-mobile-screen-button"></i> Phone Setup
       </button>
     </nav>
 
@@ -161,7 +161,7 @@
             <div class="code-box-wrapper">
               <label class="code-label">SERVER PIPELINE (Sender Laptop):</label>
               <div class="code-box">
-                <code id="cmd-server-output">gst-launch-1.0 -v wasapisrc loopback=true ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! opusenc frame-size=10 bitrate=160000 ! rtpopuspay ! udpsink host=224.0.0.1 port=5004 auto-multicast=true</code>
+                <code id="cmd-server-output">gst-launch-1.0 -v wasapisrc loopback=true ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! opusenc frame-size=10 bitrate=160000 music-mode=true ! rtpopuspay ! udpsink host=224.0.0.1 port=5004 auto-multicast=true</code>
                 <button class="copy-icon-btn" onclick="copyText('cmd-server-output')"><i class="fa-regular fa-copy"></i></button>
               </div>
             </div>
@@ -169,7 +169,7 @@
             <div class="code-box-wrapper mt-3">
               <label class="code-label">CLIENT PIPELINE (Friend's Device):</label>
               <div class="code-box">
-                <code id="cmd-client-output">gst-launch-1.0 -v udpsrc multicast-group=224.0.0.1 port=5004 caps="application/x-rtp,media=audio,clock-rate=48000,encoding-name=OPUS" ! rtpjitterbuffer latency=10 ! rtpopusdepay ! opusdec ! audioconvert ! audioresample ! autoaudiosink</code>
+                <code id="cmd-client-output">gst-launch-1.0 -v udpsrc multicast-group=224.0.0.1 port=5004 caps="application/x-rtp,media=audio,clock-rate=48000,encoding-name=OPUS" ! rtpjitterbuffer latency=500 ! rtpopusdepay ! opusdec ! audioconvert ! autoaudiosink</code>
                 <button class="copy-icon-btn" onclick="copyText('cmd-client-output')"><i class="fa-regular fa-copy"></i></button>
               </div>
             </div>
@@ -275,37 +275,41 @@
       <section id="tab-guide" class="tab-panel">
         <div class="glass-card">
           <div class="card-header">
-            <h2><i class="fa-solid fa-book"></i> GStreamer Low-Latency Setup & Tuning Guide</h2>
+            <h2><i class="fa-solid fa-book"></i> Simple Setup Guide for Phones</h2>
           </div>
 
           <div class="guide-content">
             <div class="guide-section">
-              <h3><i class="fa-brands fa-windows"></i> Windows WASAPI Setup</h3>
-              <p>1. Install GStreamer for Windows from <a href="https://gstreamer.freedesktop.org/data/pkg/windows/" target="_blank">freedesktop.org</a> (Choose <b>Complete</b> installation).</p>
-              <p>2. WASAPI loopback automatically captures whatever movie player (VLC, mpv, Chrome) is playing audio through your speakers.</p>
-              <div class="code-box"><code>gst-launch-1.0 -v wasapisrc loopback=true ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! opusenc frame-size=10 bitrate=160000 ! rtpopuspay ! udpsink host=224.0.0.1 port=5004 auto-multicast=true</code></div>
+              <h3><i class="fa-solid fa-rocket"></i> Easiest Method: Use VLC on Phone</h3>
+              <p><b>No GStreamer needed on phones!</b> Just use VLC Media Player which is available on all platforms.</p>
+              <ol class="styled-list">
+                <li><b>On your laptop:</b> Run the server command shown above (copies system audio)</li>
+                <li><b>On your phone:</b> Install VLC from App Store / Play Store</li>
+                <li><b>In VLC:</b> Go to Network → Open Network Stream</li>
+                <li><b>Enter:</b> <code>rtp://@224.0.0.1:5004</code></li>
+                <li><b>Adjust sync in VLC:</b> Tools → Track Synchronization → Set audio delay to -500ms</li>
+              </ol>
+              <div class="code-box"><code>rtp://@&lt;YOUR_PC_IP&gt;:5004</code></div>
+              <p><small>Replace &lt;YOUR_PC_IP&gt; with your computer's IP shown above (e.g., 192.168.1.100)</small></p>
             </div>
 
             <div class="guide-section mt-3">
-              <h3><i class="fa-brands fa-linux"></i> Linux PulseAudio / PipeWire Setup</h3>
-              <p>1. Install packages: <code>sudo apt install gstreamer1.0-tools gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-opus</code></p>
-              <p>2. Find your desktop loopback monitor device:</p>
-              <div class="code-box"><code>pactl list sources short | grep monitor</code></div>
-              <p>3. Use the monitor device string in the server command pipeline.</p>
+              <h3><i class="fa-solid fa-mobile-screen"></i> Alternative: GStreamer on Android (Termux)</h3>
+              <p>For advanced users who want the exact pipeline:</p>
+              <ol class="styled-list">
+                <li>Install Termux from F-Droid</li>
+                <li>Run: <code>pkg install gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad gst-plugins-ugly opus</code></li>
+                <li>Paste the client command from the Host Studio tab</li>
+              </ol>
             </div>
 
             <div class="guide-section mt-3">
-              <h3><i class="fa-brands fa-apple"></i> macOS CoreAudio Setup</h3>
-              <p>1. Install BlackHole virtual audio driver via Homebrew: <code>brew install blackhole-2ch</code></p>
-              <p>2. In macOS Audio MIDI Setup, create a Multi-Output Device sending audio to both your speakers and BlackHole 2ch.</p>
-            </div>
-
-            <div class="guide-section mt-3">
-              <h3><i class="fa-solid fa-lightbulb"></i> Lip-Sync Optimization Tips</h3>
+              <h3><i class="fa-solid fa-circle-info"></i> Important Notes</h3>
               <ul class="styled-list">
-                <li><b>Use Ethernet Cables:</b> Wi-Fi introduces jitter spikes (20ms–60ms). Ethernet keeps LAN latency under 2ms.</li>
-                <li><b>10ms Opus Frames:</b> Keeps algorithmic latency at ~5ms without overloading CPU.</li>
-                <li><b>Minimizing Jitter Buffer:</b> Set <code>rtpjitterbuffer latency=10</code>. If dropouts occur, increase to 20ms.</li>
+                <li><b>Same WiFi Required:</b> Your phone and laptop must be on the same local network</li>
+                <li><b>Firewall:</b> Allow incoming UDP connections on port 5004</li>
+                <li><b>Audio Quality:</b> Server uses Opus music-mode at 160kbps for excellent quality</li>
+                <li><b>Stable Delay:</b> 500ms buffer ensures no dropouts, adjust VLC audio delay to match video</li>
               </ul>
             </div>
           </div>
