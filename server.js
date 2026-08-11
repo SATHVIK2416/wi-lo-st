@@ -3,9 +3,9 @@ const http = require('http');
 const https = require('https');
 const WebSocket = require('ws');
 const os = require('os');
-const { spawn } = require('child_process');
 const path = require('path');
 const selfsigned = require('selfsigned');
+const { spawn } = require('child_process');
 
 const PORT_HTTP = parseInt(process.env.PORT || 3000);
 const PORT_HTTPS = parseInt(process.env.HTTPS_PORT || 3443);
@@ -71,20 +71,19 @@ app.get('/api/gstreamer-commands', (req, res) => {
   const port = req.query.port || 5004;
   const frameSize = req.query.frameSize || 10;
   const bitrate = req.query.bitrate || 160000;
-  const jitter = req.query.jitter || 10;
 
   const commands = {
     windows: {
-      server: `gst-launch-1.0 -v wasapisrc loopback=true ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! opusenc frame-size=${frameSize} bitrate=${bitrate} ! rtpopuspay ! udpsink host=${host} port=${port} auto-multicast=true`,
-      client: `gst-launch-1.0 -v udpsrc multicast-group=${host} port=${port} caps="application/x-rtp,media=audio,clock-rate=48000,encoding-name=OPUS" ! rtpjitterbuffer latency=${jitter} ! rtpopusdepay ! opusdec ! audioconvert ! audioresample ! autoaudiosink`
+      server: `gst-launch-1.0 -v wasapisrc loopback=true ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! opusenc frame-size=${frameSize} bitrate=${bitrate} music-mode=true ! rtpopuspay ! udpsink host=${host} port=${port} auto-multicast=true`,
+      client: `gst-launch-1.0 -v udpsrc multicast-group=${host} port=${port} caps="application/x-rtp,media=audio,clock-rate=48000,encoding-name=OPUS" ! rtpjitterbuffer latency=500 ! rtpopusdepay ! opusdec ! audioconvert ! autoaudiosink`
     },
     linux: {
-      server: `gst-launch-1.0 -v pulsesrc device="<MONITOR_DEVICE>" ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2,format=S16LE ! opusenc frame-size=${frameSize} bitrate=${bitrate} ! rtpopuspay ! udpsink host=${host} port=${port} auto-multicast=true`,
-      client: `gst-launch-1.0 -v udpsrc multicast-group=${host} port=${port} caps="application/x-rtp,media=audio,clock-rate=48000,encoding-name=OPUS" ! rtpjitterbuffer latency=${jitter} ! rtpopusdepay ! opusdec ! audioconvert ! audioresample ! autoaudiosink`
+      server: `gst-launch-1.0 -v pulsesrc device="<MONITOR_DEVICE>" ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2,format=S16LE ! opusenc frame-size=${frameSize} bitrate=${bitrate} music-mode=true ! rtpopuspay ! udpsink host=${host} port=${port} auto-multicast=true`,
+      client: `gst-launch-1.0 -v udpsrc multicast-group=${host} port=${port} caps="application/x-rtp,media=audio,clock-rate=48000,encoding-name=OPUS" ! rtpjitterbuffer latency=500 ! rtpopusdepay ! opusdec ! audioconvert ! autoaudiosink`
     },
     macOS: {
-      server: `gst-launch-1.0 -v osxaudiosrc device="<BLACKHOLE_DEVICE>" ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! opusenc frame-size=${frameSize} bitrate=${bitrate} ! rtpopuspay ! udpsink host=${host} port=${port} auto-multicast=true`,
-      client: `gst-launch-1.0 -v udpsrc multicast-group=${host} port=${port} caps="application/x-rtp,media=audio,clock-rate=48000,encoding-name=OPUS" ! rtpjitterbuffer latency=${jitter} ! rtpopusdepay ! opusdec ! audioconvert ! audioresample ! autoaudiosink`
+      server: `gst-launch-1.0 -v osxaudiosrc device="<BLACKHOLE_DEVICE>" ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! opusenc frame-size=${frameSize} bitrate=${bitrate} music-mode=true ! rtpopuspay ! udpsink host=${host} port=${port} auto-multicast=true`,
+      client: `gst-launch-1.0 -v udpsrc multicast-group=${host} port=${port} caps="application/x-rtp,media=audio,clock-rate=48000,encoding-name=OPUS" ! rtpjitterbuffer latency=500 ! rtpopusdepay ! opusdec ! audioconvert ! autoaudiosink`
     }
   };
 

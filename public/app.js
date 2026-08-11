@@ -146,16 +146,17 @@ document.addEventListener('DOMContentLoaded', () => {
     deviceOverrideGroup.style.display = (os === 'linux' || os === 'macOS') ? 'block' : 'none';
 
     let serverCmd = '';
-    let clientCmd = `gst-launch-1.0 -v udpsrc multicast-group=${host} port=${port} caps="application/x-rtp,media=audio,clock-rate=48000,encoding-name=OPUS" ! rtpjitterbuffer latency=${jitter} ! rtpopusdepay ! opusdec ! audioconvert ! audioresample ! autoaudiosink`;
+    // Simple client pipeline for phones - just copy and run if needed
+    let clientCmd = `gst-launch-1.0 -v udpsrc multicast-group=${host} port=${port} caps="application/x-rtp,media=audio,clock-rate=48000,encoding-name=OPUS" ! rtpjitterbuffer latency=500 ! rtpopusdepay ! opusdec ! audioconvert ! autoaudiosink`;
 
     if (os === 'windows') {
-      serverCmd = `gst-launch-1.0 -v wasapisrc loopback=true ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! opusenc frame-size=${frameSize} bitrate=${bitrate} ! rtpopuspay ! udpsink host=${host} port=${port} auto-multicast=true`;
+      serverCmd = `gst-launch-1.0 -v wasapisrc loopback=true ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! opusenc frame-size=${frameSize} bitrate=${bitrate} music-mode=true ! rtpopuspay ! udpsink host=${host} port=${port} auto-multicast=true`;
     } else if (os === 'linux') {
       const dev = customDevice || '<LOOPBACK_MONITOR_DEVICE>';
-      serverCmd = `gst-launch-1.0 -v pulsesrc device="${dev}" ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2,format=S16LE ! opusenc frame-size=${frameSize} bitrate=${bitrate} ! rtpopuspay ! udpsink host=${host} port=${port} auto-multicast=true`;
+      serverCmd = `gst-launch-1.0 -v pulsesrc device="${dev}" ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2,format=S16LE ! opusenc frame-size=${frameSize} bitrate=${bitrate} music-mode=true ! rtpopuspay ! udpsink host=${host} port=${port} auto-multicast=true`;
     } else if (os === 'macOS') {
       const dev = customDevice || 'BlackHole 2ch';
-      serverCmd = `gst-launch-1.0 -v osxaudiosrc device="${dev}" ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! opusenc frame-size=${frameSize} bitrate=${bitrate} ! rtpopuspay ! udpsink host=${host} port=${port} auto-multicast=true`;
+      serverCmd = `gst-launch-1.0 -v osxaudiosrc device="${dev}" ! audioconvert ! audioresample ! audio/x-raw,rate=48000,channels=2 ! opusenc frame-size=${frameSize} bitrate=${bitrate} music-mode=true ! rtpopuspay ! udpsink host=${host} port=${port} auto-multicast=true`;
     }
 
     cmdServerOutput.textContent = serverCmd;
