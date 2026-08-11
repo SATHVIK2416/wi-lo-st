@@ -3,7 +3,6 @@ const http = require('http');
 const https = require('https');
 const WebSocket = require('ws');
 const os = require('os');
-const { spawn } = require('child_process');
 const path = require('path');
 const selfsigned = require('selfsigned');
 
@@ -18,14 +17,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 const pems = selfsigned.generate([{ name: 'commonName', value: 'wi-lo-st.local' }], { days: 365 });
 const sslOptions = { key: pems.private, cert: pems.cert };
 
-const httpServer = http.createServer(app);
-const httpsServer = https.createServer(sslOptions, app);
-
-// Attach WebSocket servers to both HTTP and HTTPS
-const wssHttp = new WebSocket.Server({ server: httpServer });
-const wssHttps = new WebSocket.Server({ server: httpsServer });
-
-let activeGstProcess = null;
+// Track active WebSocket servers and clients
+const activeWssList = [];
 let streamStats = {
   activeClients: 0,
   packetsSent: 0,
@@ -91,6 +84,10 @@ app.get('/api/gstreamer-commands', (req, res) => {
   res.json(commands);
 });
 
+/**
+ * Creates and starts a server (HTTP or HTTPS) with WebSocket support
+ * Handles port conflicts by automatically trying the next port
+ */
 function createAndStartServer(basePort, isHttps = false) {
   let portToTry = basePort;
   const srv = isHttps 
@@ -107,6 +104,8 @@ function createAndStartServer(basePort, isHttps = false) {
       if (isBinary) {
         streamStats.packetsSent++;
         streamStats.bytesSent += message.length;
+        
+        // Broadcast binary audio data to all other connected clients
         activeWssList.forEach(activeWss => {
           activeWss.clients.forEach((client) => {
             if (client !== ws && client.readyState === WebSocket.OPEN) {
@@ -115,6 +114,7 @@ function createAndStartServer(basePort, isHttps = false) {
           });
         });
       } else {
+        // Handle JSON control messages (ping/pong)
         try {
           const data = JSON.parse(message.toString());
           if (data.type === 'ping') {
@@ -128,6 +128,10 @@ function createAndStartServer(basePort, isHttps = false) {
       streamStats.activeClients = Math.max(0, streamStats.activeClients - 1);
       broadcastStats();
     });
+    
+    ws.on('error', (err) => {
+      console.error('WebSocket error:', err.message);
+    });
   });
 
   activeWssList.push(wss);
@@ -139,10 +143,6 @@ function createAndStartServer(basePort, isHttps = false) {
     } else {
       console.error('Server error:', err);
     }
-  });
-
-  wss.on('error', (err) => {
-    // Prevent unhandled wss error crashes when port is in use
   });
 
   srv.listen(portToTry, () => {
@@ -159,8 +159,7 @@ function createAndStartServer(basePort, isHttps = false) {
   });
 }
 
-const activeWssList = [];
-
+// Broadcast stats updates to all connected clients
 function broadcastStats() {
   const payload = JSON.stringify({ type: 'stats_update', stats: streamStats });
   activeWssList.forEach(wss => {
@@ -172,6 +171,7 @@ function broadcastStats() {
   });
 }
 
+// Start both HTTP and HTTPS servers
 createAndStartServer(PORT_HTTP, false);
 createAndStartServer(PORT_HTTPS, true);
 
