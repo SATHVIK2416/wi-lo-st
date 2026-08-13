@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SonicSync — Mobile Lossless Listener</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #080C14;
+            --bg-card: rgba(16, 23, 38, 0.75);
+            --bg-card-hover: rgba(24, 34, 56, 0.85);
+            --border-subtle: rgba(255, 255, 255, 0.08);
+            --border-active: rgba(0, 210, 255, 0.4);
+            --text-primary: #F0F4F8;
+            --text-secondary: #94A3B8;
+            --text-muted: #64748B;
+            --accent-cyan: #00D2FF;
+            --accent-teal: #00F5A0;
+            --accent-amber: #FFB703;
+            --accent-red: #FF4D4D;
+            --radius-lg: 18px;
+            --radius-md: 12px;
+            --radius-sm: 8px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-primary);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            overflow-x: hidden;
+        }
+
+        .ambient-glow {
+            position: fixed;
+            top: 20%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(0, 210, 255, 0.08) 0%, rgba(8, 12, 20, 0) 70%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 460px;
+            position: relative;
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* Header */
+        .app-header {
+            text-align: center;
+            margin-bottom: 8px;
+        }
+
+        .brand-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-subtle);
+            border-radius: 30px;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .brand-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            transition: background 0.3s ease;
+        }
+
+        .brand-dot.connected {
+            background: var(--accent-teal);
+            box-shadow: 0 0 10px rgba(0, 245, 160, 0.5);
+        }
+
+        h1 {
+            font-size: 1.6rem;
+            font-weight: 700;
+            margin-top: 10px;
+            letter-spacing: -0.02em;
+        }
+
+        /* Start Card */
+        .card {
+            background: var(--bg-card);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        .unlock-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 18px;
+            text-align: center;
+        }
+
+        .btn-listen {
+            width: 100%;
+            padding: 18px 24px;
+            background: linear-gradient(135deg, #00D2FF 0%, #0088FF 100%);
+            color: #040914;
+            font-size: 1.15rem;
+            font-weight: 700;
+            border: none;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            box-shadow: 0 8px 24px rgba(0, 210, 255, 0.35);
+            animation: pulse-shadow 2.5s infinite;
+        }
+
+        @keyframes pulse-shadow {
+            0% { box-shadow: 0 0 0 0 rgba(0, 210, 255, 0.5); }
+            70% { box-shadow: 0 0 0 14px rgba(0, 210, 255, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(0, 210, 255, 0); }
+        }
+
+        .btn-listen:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 30px rgba(0, 210, 255, 0.45);
+        }
+
+        .btn-listen:active {
+            transform: translateY(1px);
+        }
+
+        /* Visualizer */
+        .visualizer-wrapper {
+            width: 100%;
+            height: 90px;
+            border-radius: var(--radius-md);
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-subtle);
+            overflow: hidden;
+            position: relative;
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* DSP Presets */
+        .section-title {
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 10px;
+        }
+
+        .preset-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .preset-btn {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-subtle);
+            color: var(--text-secondary);
+            padding: 12px;
+            border-radius: var(--radius-sm);
+            font-size: 0.85rem;
+            font-weight: 500;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .preset-btn:hover {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--text-primary);
+        }
+
+        .preset-btn.active {
+            background: rgba(0, 210, 255, 0.12);
+            border-color: var(--accent-cyan);
+            color: #FFFFFF;
+            font-weight: 600;
+        }
+
+        /* Volume Slider */
+        .volume-control {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 14px;
+        }
+
+        .volume-slider {
+            flex: 1;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.1);
+            outline: none;
+        }
+
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: var(--accent-cyan);
+            cursor: pointer;
+            box-shadow: 0 0 12px rgba(0, 210, 255, 0.6);
+        }
+
+        /* Metrics & Telemetry Grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-top: 6px;
+        }
+
+        .metric-tile {
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            padding: 10px;
+            text-align: center;
+        }
+
+        .metric-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .metric-val {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-top: 4px;
+        }
+
+        /* Status Toast */
+        .status-pill {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-secondary);
+            padding: 8px 16px;
+            border-radius: 20px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--border-subtle);
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="ambient-glow"></div>
+
+    <div class="container">
+        <header class="app-header">
+            <div class="brand-badge">
+                <span class="brand-dot" id="statusDot"></span>
+                <span id="statusText">Ready to Stream</span>
+            </div>
+            <h1>SonicSync Mobile</h1>
+        </header>
+
+        <div class="card" id="startCard">
+            <div class="unlock-section">
+                <p style="color: var(--text-secondary); font-size: 0.95rem; line-height: 1.5;">
+                    Tap below to join the multi-room stream with sample-synchronized 100.0 ms delay.
+                </p>
+                <button class="btn-listen" id="btnStart">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M8 5v14l11-7z"/>
+                    </svg>
+                    <span>Tap to Listen</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="card" id="playbackCard" style="display: none;">
+            <div class="visualizer-wrapper">
+                <canvas id="visCanvas"></canvas>
+            </div>
+
+            <div class="status-pill" id="syncPill">
+                <span>Sync Status:</span>
+                <strong id="liveDelayText" style="color: var(--accent-cyan);">100.0 ms</strong>
+                <span id="lockBadge" style="color: var(--accent-teal); margin-left: 6px;">[LOCKED]</span>
+            </div>
+
+            <div class="volume-control">
+                <span style="font-size: 0.8rem; color: var(--text-muted);">VOL</span>
+                <input type="range" class="volume-slider" id="volSlider" min="0" max="100" value="100">
+                <span id="volVal" style="font-family: 'JetBrains Mono'; font-size: 0.8rem; min-width: 32px;">100%</span>
+            </div>
+
+            <div style="margin-top: 18px;">
+                <div class="section-title">Acoustic DSP Preset</div>
+                <div class="preset-grid">
+                    <button class="preset-btn active" data-preset="cinema">Cinema & Vocals</button>
+                    <button class="preset-btn" data-preset="flat">Bit-Exact Flat</button>
+                    <button class="preset-btn" data-preset="tube">Warm Analog</button>
+                    <button class="preset-btn" data-preset="presence">Studio Presence</button>
+                </div>
+            </div>
+
+            <div style="margin-top: 18px;">
+                <div class="section-title">Live Telemetry</div>
+                <div class="metrics-grid">
+                    <div class="metric-tile">
+                        <div class="metric-label">Buffer Depth</div>
+                        <div class="metric-val" id="metricBuffer">100 ms</div>
+                    </div>
+                    <div class="metric-tile">
+                        <div class="metric-label">Clock Offset</div>
+                        <div class="metric-val" id="metricOffset">0.0 ms</div>
+                    </div>
+                    <div class="metric-tile">
+                        <div class="metric-label">Network RTT</div>
+                        <div class="metric-val" id="metricRtt">0.0 ms</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Core Scripts -->
+    <script src="/static/resampler.js"></script>
+    <script src="/static/pll.js"></script>
+    <script src="/static/dsp.js"></script>
+    <script>
+        let audioCtx = null;
+        let dsp = null;
+        let ws = null;
+        let ntpSync = new NTPClientSync();
+        let pll = new ClientPLLController(0.100);
+        let resampler = new HermiteResampler(2);
+        let wakeLock = null;
+
+        let isRunning = false;
+        let scheduledTime = 0.0;
+        let underruns = 0;
+
+        const btnStart = document.getElementById('btnStart');
+        const startCard = document.getElementById('startCard');
+        const playbackCard = document.getElementById('playbackCard');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const metricBuffer = document.getElementById('metricBuffer');
+        const metricOffset = document.getElementById('metricOffset');
+        const metricRtt = document.getElementById('metricRtt');
+        const volSlider = document.getElementById('volSlider');
+        const volVal = document.getElementById('volVal');
+        const visCanvas = document.getElementById('visCanvas');
+        const ctx2d = visCanvas.getContext('2d');
+
+        // Request Screen Wake Lock so mobile display stays active
+        async function requestWakeLock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                } catch (e) {
+                    console.debug('WakeLock note:', e);
+                }
+            }
+        }
+
+        // Resume AudioContext if tab comes back into focus
+        document.addEventListener('visibilitychange', async () => {
+            if (document.visibilityState === 'visible') {
+                if (audioCtx && audioCtx.state === 'suspended') {
+                    await audioCtx.resume();
+                }
+                requestWakeLock();
+            }
+        });
+
+        // Preset buttons
+        document.querySelectorAll('.preset-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                if (dsp) dsp.setPreset(btn.dataset.preset);
+            });
+        });
+
+        volSlider.addEventListener('input', (e) => {
+            const v = e.target.value / 100.0;
+            volVal.textContent = `${e.target.value}%`;
+            if (dsp) dsp.setVolume(v);
+        });
+
+        btnStart.addEventListener('click', async () => {
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)({
+                    sampleRate: 48000,
+                    latencyHint: 'interactive'
+                });
+                await audioCtx.resume();
+                dsp = new AudioDSPChain(audioCtx);
+
+                startCard.style.display = 'none';
+                playbackCard.style.display = 'block';
+
+                connectWebSocket();
+                startVisualizer();
+                requestWakeLock();
+                isRunning = true;
+            } catch (err) {
+                alert('Audio start error: ' + err.message);
+            }
+        });
+
+        function connectWebSocket() {
+            const loc = window.location;
+            const wsProtocol = loc.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${wsProtocol}//${loc.host}/ws`;
+
+            statusText.textContent = "Connecting...";
+            ws = new WebSocket(wsUrl);
+            ws.binaryType = 'arraybuffer';
+
+            ws.onopen = () => {
+                statusDot.classList.add('connected');
+                statusText.textContent = "Lossless Stream Active";
+                startNTPHeartbeat();
+            };
+
+            ws.onmessage = (event) => {
+                if (typeof event.data === 'string') {
+                    handleJsonMessage(JSON.parse(event.data));
+                } else if (event.data instanceof ArrayBuffer) {
+                    handleAudioPacket(event.data);
+                }
+            };
+
+            ws.onclose = () => {
+                statusDot.classList.remove('connected');
+                statusText.textContent = "Reconnecting...";
+                setTimeout(connectWebSocket, 1500);
+            };
+        }
+
+        let ntpTimer = null;
+        function startNTPHeartbeat() {
+            if (ntpTimer) clearInterval(ntpTimer);
+            ntpTimer = setInterval(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    const t0 = performance.now() / 1000.0;
+                    ws.send(JSON.stringify({ type: 'ntp_request', t0: t0 }));
+                }
+            }, 1000);
+        }
+
+        function handleJsonMessage(data) {
+            if (data.type === 'ntp_response') {
+                const t3 = performance.now() / 1000.0;
+                const stats = ntpSync.addMeasurement(data.t0, data.t1, data.t2, t3);
+
+                metricOffset.textContent = `${(stats.offset * 1000).toFixed(1)} ms`;
+                metricRtt.textContent = `${(stats.rtt * 1000).toFixed(1)} ms`;
+
+                // Live client telemetry report back to host
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    const depthMs = Math.max(0, (scheduledTime - audioCtx.currentTime) * 1000);
+                    ws.send(JSON.stringify({
+                        type: 'client_report',
+                        client_type: 'web',
+                        buffer_ms: depthMs,
+                        offset_ms: stats.offset * 1000,
+                        rtt_ms: stats.rtt * 1000,
+                        drift_ppm: stats.driftPpm,
+                        is_locked: stats.isLocked,
+                        underruns: underruns,
+                        resample_ratio: pll.currentRatio
+                    }));
+                }
+            }
+        }
+
+        function handleAudioPacket(buffer) {
+            if (buffer.byteLength < 42) return;
+            const view = new DataView(buffer);
+
+            // 42-byte binary header parse
+            const sampleRate = view.getUint32(8, false);
+            const frameCount = view.getUint16(32, false);
+
+            // Float32 payload
+            const floatData = new Float32Array(buffer, 42, frameCount * 2);
+            const left = new Float32Array(frameCount);
+            const right = new Float32Array(frameCount);
+
+            for (let i = 0; i < frameCount; i++) {
+                left[i] = floatData[i * 2];
+                right[i] = floatData[i * 2 + 1];
+            }
+
+            // Adaptive PLL playout scheduling
+            const now = audioCtx.currentTime;
+            if (scheduledTime < now) {
+                // Buffer starvation / cold start -> anchor at 100ms
+                scheduledTime = now + 0.100;
+                underruns++;
+            }
+
+            const currentBufferDepth = scheduledTime - now;
+            metricBuffer.textContent = `${(currentBufferDepth * 1000).toFixed(1)} ms`;
+
+            // PLL rate modulation
+            const ratio = pll.update(currentBufferDepth, 0.01);
+            const [rLeft, rRight] = resampler.resample([left, right], ratio);
+
+            const audioBuf = audioCtx.createBuffer(2, rLeft.length, sampleRate);
+            audioBuf.copyToChannel(rLeft, 0);
+            audioBuf.copyToChannel(rRight, 1);
+
+            const sourceNode = audioCtx.createBufferSource();
+            sourceNode.buffer = audioBuf;
+            sourceNode.connect(dsp.inputNode);
+            sourceNode.start(scheduledTime);
+
+            scheduledTime += (rLeft.length / sampleRate);
+            lastSamples = rLeft;
+        }
+
+        let lastSamples = null;
+        function startVisualizer() {
+            function draw() {
+                requestAnimationFrame(draw);
+                visCanvas.width = visCanvas.clientWidth;
+                visCanvas.height = visCanvas.clientHeight;
+                const w = visCanvas.width;
+                const h = visCanvas.height;
+
+                ctx2d.fillStyle = 'rgba(0, 0, 0, 0.35)';
+                ctx2d.fillRect(0, 0, w, h);
+
+                if (!lastSamples) return;
+
+                ctx2d.lineWidth = 2;
+                ctx2d.strokeStyle = '#00D2FF';
+                ctx2d.beginPath();
+
+                const slice = w / lastSamples.length;
+                for (let i = 0; i < lastSamples.length; i++) {
+                    const x = i * slice;
+                    const y = (0.5 + lastSamples[i] * 0.45) * h;
+                    if (i === 0) ctx2d.moveTo(x, y);
+                    else ctx2d.lineTo(x, y);
+                }
+                ctx2d.stroke();
+            }
+            draw();
+        }
+    </script>
+</body>
+</html>
