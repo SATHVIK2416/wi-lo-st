@@ -10,7 +10,7 @@ SonicSync taps into libVLC via direct audio memory callbacks (`audio_set_format(
 ## 2. VLC Direct Listener Mode
 Desktop computers running VLC can open SonicSync's network broadcast stream directly:
 ```bash
-vlc --network-caching=120 --quiet --no-audio-time-stretch rtp://@239.255.0.1:5004
+vlc --network-caching=120 --quiet --no-audio-time-stretch rtp://@239.255.0.1:5006
 ```
 Or open the generated session files from the dashboard:
 - `http://<HOST_IP>:8080/api/stream.m3u`

@@ -9,12 +9,17 @@ class NTPClientSync {
         this.offset = 0.0;
         this.rtt = 0.0;
         this.isLocked = false;
+        this.confidence = 0.0;
         this.driftPpm = 0.0;
 
         this._history = []; // [time, offset]
     }
 
     addMeasurement(t0, t1, t2, t3) {
+        // Reject bogus exchanges (reply before request / negative raw RTT)
+        if (t3 < t0 || ((t3 - t0) - (t2 - t1)) < 0) {
+            return { offset: this.offset, rtt: this.rtt, isLocked: this.isLocked, driftPpm: this.driftPpm, confidence: this.confidence };
+        }
         const offset = ((t1 - t0) + (t2 - t3)) / 2.0;
         const rtt = Math.max(0.0, (t3 - t0) - (t2 - t1));
 
@@ -24,18 +29,21 @@ class NTPClientSync {
         }
 
         this._recalculate(t3);
-        return { offset: this.offset, rtt: this.rtt, isLocked: this.isLocked, driftPpm: this.driftPpm };
+        return { offset: this.offset, rtt: this.rtt, isLocked: this.isLocked, driftPpm: this.driftPpm, confidence: this.confidence };
     }
 
     _recalculate(currentTime) {
         if (this.measurements.length < 3) {
             this.isLocked = false;
-            this.offset = this.measurements[this.measurements.length - 1].offset;
-            this.rtt = this.measurements[this.measurements.length - 1].rtt;
+            this.confidence = this.measurements.length / 5.0;
+            const last = this.measurements[this.measurements.length - 1];
+            this.offset = last.offset;
+            this.rtt = last.rtt;
             return;
         }
 
-        // Sort by RTT and select best 50%
+        // Sort by RTT and select the best 60% (lowest-RTT samples are the
+        // most accurate offset estimates on Wi-Fi)
         const sorted = [...this.measurements].sort((a, b) => a.rtt - b.rtt);
         const bestCount = Math.max(2, Math.floor(sorted.length * 0.6));
         const best = sorted.slice(0, bestCount);
@@ -50,7 +58,17 @@ class NTPClientSync {
 
         this.offset = weightedOffset / sumWeight;
         this.rtt = best[0].rtt;
-        this.isLocked = this.measurements.length >= 5;
+
+        // Confidence from offset spread across the best subset; lock requires
+        // sample count AND low variance so a terrible link never claims lock
+        let mean = 0;
+        for (const m of best) mean += m.offset;
+        mean /= best.length;
+        let variance = 0;
+        for (const m of best) variance += (m.offset - mean) * (m.offset - mean);
+        const stdMs = Math.sqrt(variance / best.length) * 1000.0;
+        this.confidence = Math.max(0.1, Math.min(1.0, 1.0 - stdMs / 10.0));
+        this.isLocked = this.measurements.length >= 5 && this.confidence >= 0.5;
 
         // Record history for drift regression
         this._history.push([currentTime, this.offset]);

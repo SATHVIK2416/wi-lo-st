@@ -52,7 +52,7 @@ Every native SonicSync packet transmitted over UDP and WebSocket begins with a f
 
 ## 2. RFC 3550 RTP/RTCP VLC Transport
 
-For direct compatibility with standard desktop players like VLC, SonicSync simultaneously broadcasts RFC 3550 RTP datagrams over UDP (`239.255.0.1:5004`).
+For direct compatibility with standard desktop players like VLC, SonicSync simultaneously broadcasts RFC 3550 RTP datagrams over UDP (`239.255.0.1:5006`).
 
 - **Payload Type**: Dynamic PT 96 (Linear PCM L16 / L24)
 - **Packet Duration**: 10 ms (480 samples @ 48 kHz)

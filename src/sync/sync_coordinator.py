@@ -2,7 +2,7 @@
 
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List
 import numpy as np
 
 
@@ -21,7 +21,7 @@ class ClientSyncTelemetry:
     overruns: int = 0
     packet_loss_rate: float = 0.0
     resample_ratio: float = 1.0
-    last_seen: float = field(default_factory=time.time)
+    last_seen: float = field(default_factory=time.monotonic)
 
     def to_dict(self) -> dict:
         return {
@@ -37,7 +37,7 @@ class ClientSyncTelemetry:
             "overruns": self.overruns,
             "packet_loss_rate": round(self.packet_loss_rate, 4),
             "resample_ratio": round(self.resample_ratio, 6),
-            "last_seen_sec_ago": round(time.time() - self.last_seen, 1),
+            "last_seen_sec_ago": round(time.monotonic() - self.last_seen, 1),
         }
 
 
@@ -63,7 +63,7 @@ class MasterSyncCoordinator:
         clock_offset_ms: float = 0.0,
         rtt_ms: float = 0.0,
         drift_ppm: float = 0.0,
-        is_locked: bool = True,
+        is_locked: bool = False,
         underruns: int = 0,
         overruns: int = 0,
         packet_loss_rate: float = 0.0,
@@ -87,14 +87,14 @@ class MasterSyncCoordinator:
         client.overruns = overruns
         client.packet_loss_rate = packet_loss_rate
         client.resample_ratio = resample_ratio
-        client.last_seen = time.time()
+        client.last_seen = time.monotonic()
 
     def remove_client(self, client_id: str):
         self._clients.pop(client_id, None)
 
     def prune_stale_clients(self):
         """Remove clients that have stopped sending heartbeats/telemetry."""
-        now = time.time()
+        now = time.monotonic()
         stale = [cid for cid, c in self._clients.items() if (now - c.last_seen) > self._client_timeout_sec]
         for cid in stale:
             del self._clients[cid]

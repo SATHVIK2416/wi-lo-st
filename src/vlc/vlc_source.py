@@ -3,13 +3,13 @@
 import ctypes
 import logging
 import os
-from typing import Optional, Callable
+from typing import Optional
 import numpy as np
 
 from src.capture.base_source import AudioSource
-from src.core.audio_format import AudioFormat, SampleFormat, pcm_to_numpy_float32
-from src.vlc.vlc_control import VLCController, VLCPlaybackState
-from src.vlc.vlc_playlist import VLCPlaylist, PlaylistItem
+from src.core.audio_format import AudioFormat
+from src.vlc.vlc_control import VLCController
+from src.vlc.vlc_playlist import VLCPlaylist
 from src.vlc.vlc_metadata import extract_vlc_metadata, MediaMetadata
 
 logger = logging.getLogger(__name__)
@@ -28,6 +28,8 @@ class VLCSource(AudioSource):
         self._player = None
         self._current_media = None
         self._callbacks_registered = False
+        self._frames_captured: int = 0
+        self._released: bool = False
 
         # Keep references to callbacks so ctypes doesn't garbage collect them
         self._play_cb = None
@@ -37,6 +39,11 @@ class VLCSource(AudioSource):
         self._drain_cb = None
 
         self._init_vlc()
+
+    @property
+    def frames_captured(self) -> int:
+        """Number of audio frames delivered by the libVLC amem callback."""
+        return self._frames_captured
 
     def _init_vlc(self):
         """Initialize libVLC instance and player."""
@@ -52,6 +59,7 @@ class VLCSource(AudioSource):
             self._instance = vlc.Instance(*vlc_args)
             self._player = self._instance.media_player_new()
             self.controller.attach_player(self._player)
+            self._released = False
             self._setup_callbacks()
             logger.info("libVLC audio memory engine initialized successfully.")
         except Exception as e:
@@ -79,6 +87,7 @@ class VLCSource(AudioSource):
         def _on_play(data_ptr, samples_ptr, count, pts):
             if count <= 0 or not samples_ptr:
                 return
+            self._frames_captured += 1
             try:
                 # 4 bytes per float32 * channels * count
                 byte_count = count * ch * 4
@@ -120,16 +129,20 @@ class VLCSource(AudioSource):
         except Exception as e:
             logger.warning(f"Could not bind direct libVLC audio callbacks: {e}")
 
-    def load_media(self, uri_or_path: str, title: str = "") -> bool:
-        """Load a media URI or file into player and start/queue."""
+    def load_media(self, uri_or_path: str, title: str = "", autoplay: bool = True) -> bool:
+        """Load a media URI or file into player and optionally start playback immediately."""
         if not uri_or_path:
             return False
+
+        # Clean string / quotes
+        uri_or_path = uri_or_path.strip('\"\'')
+        if not title:
+            title = os.path.basename(uri_or_path)
 
         item = self.playlist.add(uri=uri_or_path, title=title)
 
         if self._instance is not None and self._player is not None:
             try:
-                import vlc
                 if os.path.exists(uri_or_path):
                     media = self._instance.media_new_path(uri_or_path)
                 else:
@@ -139,6 +152,9 @@ class VLCSource(AudioSource):
                 self._player.set_media(media)
                 self.metadata = extract_vlc_metadata(media)
                 item.metadata = self.metadata
+
+                if autoplay:
+                    self.controller.play()
                 return True
             except Exception as e:
                 logger.error(f"Failed to load media in VLC: {e}")
@@ -146,6 +162,8 @@ class VLCSource(AudioSource):
 
         # Virtual mode
         self.metadata = MediaMetadata(title=item.title, uri=uri_or_path)
+        if autoplay:
+            self.controller.play()
         return True
 
     def play_index(self, index: int) -> bool:
@@ -184,15 +202,39 @@ class VLCSource(AudioSource):
             "current_track": current_item.title if current_item else "None",
             "playlist_count": self.playlist.count(),
             "playlist": self.playlist.get_items(),
+            "frames_captured": self._frames_captured,
         }
 
     def start(self):
+        if self._released or (self._player is None and self._instance is None):
+            self._init_vlc()
         self._is_running = True
         self.controller.play()
 
     def stop(self):
         self._is_running = False
         self.controller.stop()
+        self._release_vlc()
+
+    def _release_vlc(self):
+        """Release libVLC player and instance resources. Safe to call repeatedly."""
+        if self._released:
+            return
+        self._released = True
+        player, instance = self._player, self._instance
+        self._player = None
+        self._instance = None
+        self._current_media = None
+        self._callbacks_registered = False
+        self.controller.attach_player(None)
+
+        for resource, name in ((player, "player"), (instance, "instance")):
+            if resource is None:
+                continue
+            try:
+                resource.release()
+            except Exception as e:
+                logger.warning(f"Could not release libVLC {name}: {e}")
 
     def read(self, num_frames: int) -> np.ndarray:
         return np.zeros((num_frames, self.audio_format.channels), dtype=np.float32)

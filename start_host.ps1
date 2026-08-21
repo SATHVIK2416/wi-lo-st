@@ -2,7 +2,7 @@
 $Host.UI.RawUI.WindowTitle = "SonicSync Lossless Multi-Room Audio Host"
 
 Write-Host "======================================================================" -ForegroundColor Cyan
-Write-Host "   🎵  SonicSync — Lossless Multi-Room Wireless Audio System" -ForegroundColor White
+Write-Host "   SonicSync — Lossless Multi-Room Wireless Audio System" -ForegroundColor White
 Write-Host "======================================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -14,5 +14,32 @@ if (-not $pythonExists) {
     exit 1
 }
 
+# Prefer the project virtual environment; create it on first run
+if (Test-Path ".venv\Scripts\python.exe") {
+    $python = ".\.venv\Scripts\python.exe"
+    Write-Host "[*] Using virtual environment .venv" -ForegroundColor Green
+} else {
+    Write-Host "[*] No .venv found - creating one (first run only)..." -ForegroundColor Yellow
+    python -m venv .venv
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[ERROR] Failed to create virtual environment." -ForegroundColor Red
+        Read-Host "Press Enter to exit"
+        exit 1
+    }
+    & ".\.venv\Scripts\python.exe" -m pip install --quiet -r requirements.txt
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[ERROR] Failed to install dependencies." -ForegroundColor Red
+        Read-Host "Press Enter to exit"
+        exit 1
+    }
+    $python = ".\.venv\Scripts\python.exe"
+}
+
 Write-Host "[*] Launching SonicSync Host..." -ForegroundColor Green
-python run.py --mode host --source test
+& $python run.py --mode host --source test
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "[ERROR] SonicSync exited with code $LASTEXITCODE." -ForegroundColor Red
+    Read-Host "Press Enter to exit"
+}

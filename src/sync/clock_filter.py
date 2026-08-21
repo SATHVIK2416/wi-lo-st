@@ -1,9 +1,11 @@
 """4-Timestamp NTP clock offset and RTT estimation with statistical outlier filtering."""
 
+import logging
 from collections import deque
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -13,6 +15,16 @@ class NTPMeasurement:
     t1: float  # Host receive time
     t2: float  # Host transmit time
     t3: float  # Client receive time
+
+    @property
+    def is_valid(self) -> bool:
+        """Reject bogus exchanges where replies appear before requests.
+
+        A negative raw RTT means the timestamps are inconsistent (clock step,
+        tampering, or a mispaired response) and the sample must be discarded;
+        clamping it to zero would give it maximal inverse-RTT weight instead.
+        """
+        return (self.t3 >= self.t0) and ((self.t3 - self.t0) - (self.t2 - self.t1)) >= 0.0
 
     @property
     def offset(self) -> float:
@@ -53,7 +65,7 @@ class ClockSyncFilter:
     def confidence(self) -> float:
         return self._confidence
 
-    def add_measurement(self, t0: float, t1: float, t2: float, t3: float) -> Tuple[float, float, bool]:
+    def add_measurement(self, t0: float, t1: float, t2: float, t3: float) -> tuple:
         """Record a new 4-timestamp measurement and update filtered estimates.
 
         Args:
@@ -66,6 +78,10 @@ class ClockSyncFilter:
             Tuple[float, float, bool]: (filtered_offset, filtered_rtt, is_locked)
         """
         meas = NTPMeasurement(t0=t0, t1=t1, t2=t2, t3=t3)
+        if not meas.is_valid:
+            logger.debug("Discarding inconsistent NTP exchange (t3 < t0 or negative RTT)")
+            return self._filtered_offset, self._filtered_rtt, self._is_locked
+
         self._measurements.append(meas)
         self._recalculate()
         return self._filtered_offset, self._filtered_rtt, self._is_locked
@@ -105,7 +121,9 @@ class ClockSyncFilter:
         offset_std = float(np.std(valid_offsets))
         # High confidence if std < 2ms (0.002s)
         self._confidence = min(1.0, max(0.1, 1.0 - (offset_std / 0.010)))
-        self._is_locked = True
+        # Lock requires enough samples AND a stable (low-variance) offset estimate;
+        # a client on a terrible link must not claim lock just from sample count.
+        self._is_locked = len(self._measurements) >= self.min_samples_for_lock and self._confidence >= 0.5
 
     def reset(self):
         self._measurements.clear()

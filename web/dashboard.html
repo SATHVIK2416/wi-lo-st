@@ -3,830 +3,817 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SonicSync — Host Management Dashboard</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <title>SonicSync Host Dashboard</title>
     <style>
         :root {
-            --bg-base: #070B12;
-            --bg-surface: rgba(14, 20, 32, 0.7);
-            --bg-surface-elevated: rgba(20, 28, 46, 0.85);
-            --border-subtle: rgba(255, 255, 255, 0.08);
-            --border-highlight: rgba(0, 210, 255, 0.35);
-            --text-primary: #F3F6FA;
-            --text-secondary: #94A3B8;
-            --text-muted: #64748B;
-            --accent-cyan: #00D2FF;
-            --accent-blue: #0088FF;
-            --accent-emerald: #00F5A0;
-            --accent-amber: #FFB703;
-            --accent-rose: #FF3366;
-            --radius-lg: 16px;
-            --radius-md: 10px;
-            --radius-sm: 6px;
+            --bg: #090b10;
+            --panel: rgba(255, 255, 255, 0.03);
+            --panel-border: rgba(255, 255, 255, 0.08);
+            --text: #f8fafc;
+            --text-sub: #94a3b8;
+            --text-muted: #64748b;
+            --accent: #00d2ff;
+            --accent-dim: rgba(0, 210, 255, 0.15);
+            --teal: #00f5a0;
+            --amber: #ffb703;
+            --red: #ff4d4d;
+            --radius: 14px;
+            --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, monospace;
         }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            background-color: var(--bg-base);
-            color: var(--text-primary);
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg);
+            background-image: radial-gradient(circle at 50% -10%, #131a2a 0%, var(--bg) 55%);
+            color: var(--text);
+            font-family: var(--font);
             min-height: 100vh;
-            padding: 24px;
-            display: flex;
-            justify-content: center;
+            padding: 24px 16px 60px;
         }
+        .shell { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
 
-        .dashboard-container {
-            width: 100%;
-            max-width: 1200px;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
+        header.topbar {
+            display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
         }
-
-        /* Top Header Bar */
-        .header-bar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 16px 24px;
-            background: var(--bg-surface);
-            backdrop-filter: blur(16px);
-            border: 1px solid var(--border-subtle);
-            border-radius: var(--radius-lg);
+        .brand { display: flex; align-items: center; gap: 12px; }
+        .brand h1 { font-size: 1.35rem; letter-spacing: -0.02em; }
+        .brand .sub { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+        .health-pill {
+            font-family: var(--mono); font-size: 0.8rem; color: var(--text-sub);
+            background: var(--panel); border: 1px solid var(--panel-border);
+            padding: 6px 14px; border-radius: 20px;
         }
+        .health-pill b { color: var(--teal); }
 
-        .brand-group {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .brand-icon {
-            width: 36px;
-            height: 36px;
-            border-radius: 10px;
-            background: linear-gradient(135deg, #00D2FF 0%, #0066FF 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #040914;
-            font-weight: 800;
-            font-size: 1.1rem;
-        }
-
-        .brand-title h1 {
-            font-size: 1.25rem;
-            font-weight: 700;
-            letter-spacing: -0.02em;
-        }
-
-        .brand-title p {
-            font-size: 0.75rem;
-            color: var(--text-secondary);
-        }
-
-        .header-metrics {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
-
-        .metric-pill {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 6px 14px;
-            background: rgba(0, 0, 0, 0.4);
-            border: 1px solid var(--border-subtle);
-            border-radius: 30px;
-            font-size: 0.8rem;
-            font-family: 'JetBrains Mono', monospace;
-        }
-
-        .dot-green {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--accent-emerald);
-            box-shadow: 0 0 8px var(--accent-emerald);
-        }
-
-        /* Main Grid Layout */
-        .main-grid {
-            display: grid;
-            grid-template-columns: 1fr 340px;
-            gap: 20px;
-        }
-
-        @media (max-width: 960px) {
-            .main-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        .panel {
-            background: var(--bg-surface);
-            backdrop-filter: blur(16px);
-            border: 1px solid var(--border-subtle);
-            border-radius: var(--radius-lg);
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-
-        .panel-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            border-bottom: 1px solid var(--border-subtle);
-            padding-bottom: 12px;
-        }
-
-        .panel-title {
-            font-size: 0.95rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: var(--text-secondary);
-        }
-
-        /* Source Selection Tabs */
-        .source-tabs {
-            display: flex;
-            gap: 8px;
-            background: rgba(0, 0, 0, 0.3);
-            padding: 4px;
-            border-radius: var(--radius-md);
-            border: 1px solid var(--border-subtle);
-        }
-
+        nav.tabs { display: flex; gap: 6px; flex-wrap: wrap; }
         .tab-btn {
-            flex: 1;
-            padding: 10px 14px;
-            background: transparent;
-            border: none;
-            border-radius: var(--radius-sm);
-            color: var(--text-secondary);
-            font-size: 0.85rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
+            background: var(--panel); border: 1px solid var(--panel-border); color: var(--text-sub);
+            font-family: var(--font); font-size: 0.9rem; font-weight: 500;
+            padding: 10px 18px; border-radius: 10px; cursor: pointer; transition: 0.15s;
+        }
+        .tab-btn:hover { color: var(--text); }
+        .tab-btn.active { background: var(--accent-dim); border-color: var(--accent); color: #fff; font-weight: 600; }
+
+        .page { display: none; flex-direction: column; gap: 16px; }
+        .page.active { display: flex; }
+
+        .card {
+            background: var(--panel); border: 1px solid var(--panel-border);
+            border-radius: var(--radius); padding: 20px;
+        }
+        .card h2 { font-size: 0.85rem; font-weight: 600; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 14px; }
+
+        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+        @media (max-width: 720px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+
+        .kv { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.92rem; }
+        .kv:last-child { border-bottom: none; }
+        .kv .k { color: var(--text-sub); }
+        .kv .v { font-family: var(--mono); }
+
+        .qr-panel { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+        .qr-panel img { width: 190px; height: 190px; border-radius: 12px; background: #fff; padding: 6px; }
+        .qr-side { display: flex; flex-direction: column; gap: 10px; flex: 1; min-width: 220px; }
+        .url-box {
+            font-family: var(--mono); font-size: 0.85rem; color: var(--accent);
+            background: rgba(0,0,0,0.35); border: 1px solid var(--panel-border);
+            padding: 10px 12px; border-radius: 8px; word-break: break-all;
         }
 
-        .tab-btn:hover {
-            color: var(--text-primary);
-            background: rgba(255, 255, 255, 0.04);
+        .btn {
+            font-family: var(--font); font-size: 0.9rem; font-weight: 600;
+            padding: 10px 16px; border-radius: 10px; border: 1px solid var(--panel-border);
+            background: rgba(255,255,255,0.05); color: var(--text); cursor: pointer; transition: 0.15s;
+        }
+        .btn:hover { background: rgba(255,255,255,0.1); }
+        .btn:disabled { opacity: 0.5; cursor: default; }
+        .btn.primary {
+            background: linear-gradient(135deg, #00d2ff, #0088ff); color: #04101c; border: none;
+            box-shadow: 0 6px 18px rgba(0, 210, 255, 0.25);
+        }
+        .btn.danger { border-color: rgba(255, 77, 77, 0.5); color: var(--red); }
+        .btn.small { font-size: 0.8rem; padding: 7px 12px; }
+        .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        .badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 0.78rem; font-family: var(--mono);
+            padding: 4px 12px; border-radius: 16px; border: 1px solid var(--panel-border);
+        }
+        .badge.on { color: var(--teal); border-color: rgba(0,245,160,0.4); background: rgba(0,245,160,0.08); }
+        .badge.off { color: var(--text-muted); }
+        .badge.warn { color: var(--amber); border-color: rgba(255,183,3,0.4); background: rgba(255,183,3,0.08); }
+
+        input[type="text"], input[type="number"], input[type="password"], select {
+            background: rgba(0,0,0,0.35); border: 1px solid var(--panel-border); color: var(--text);
+            font-family: var(--font); font-size: 0.9rem; padding: 9px 12px; border-radius: 8px; outline: none;
+        }
+        input:focus, select:focus { border-color: var(--accent); }
+        input[type="range"] { -webkit-appearance: none; appearance: none; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.12); outline: none; }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none; width: 18px; height: 18px; border-radius: 50%;
+            background: var(--accent); cursor: pointer;
         }
 
-        .tab-btn.active {
-            background: rgba(0, 210, 255, 0.15);
-            color: var(--accent-cyan);
-            border: 1px solid var(--border-highlight);
+        table.clients { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        table.clients th {
+            text-align: left; color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;
+            letter-spacing: 0.06em; padding: 8px 10px; border-bottom: 1px solid var(--panel-border);
         }
+        table.clients td { padding: 9px 10px; border-bottom: 1px solid rgba(255,255,255,0.04); font-family: var(--mono); }
+        table.clients tr.stale td { opacity: 0.4; }
+        table.clients tr.unlocked td { background: rgba(255, 77, 77, 0.06); }
+        .empty-note { color: var(--text-muted); font-size: 0.9rem; padding: 14px 0; text-align: center; }
 
-        /* Visualizer */
-        .vis-container {
-            width: 100%;
-            height: 120px;
-            background: #04070D;
-            border-radius: var(--radius-md);
-            border: 1px solid var(--border-subtle);
-            overflow: hidden;
-            position: relative;
+        .playlist-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.9rem;
         }
+        .playlist-item.current { color: var(--accent); font-weight: 600; }
+        .playlist-item .play-btn { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 1rem; }
 
-        canvas {
-            width: 100%;
-            height: 100%;
-            display: block;
+        .toast {
+            position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+            background: #131a2a; color: var(--text); border: 1px solid var(--panel-border);
+            padding: 12px 20px; border-radius: 12px; font-size: 0.9rem;
+            transition: transform 0.25s ease; z-index: 200; max-width: 90vw;
         }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+        .toast.error { border-color: rgba(255,77,77,0.5); color: var(--red); }
 
-        /* VLC Media Player Controls */
-        .vlc-player-card {
-            background: rgba(0, 0, 0, 0.25);
-            border: 1px solid var(--border-subtle);
-            border-radius: var(--radius-md);
-            padding: 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 14px;
-        }
+        .metric-big { text-align: center; padding: 12px 6px; }
+        .metric-big .num { font-family: var(--mono); font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+        .metric-big .lbl { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
 
-        .media-info {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+        .overlay {
+            position: fixed; inset: 0; background: rgba(4, 9, 20, 0.9); z-index: 300;
+            display: none; align-items: center; justify-content: center;
         }
+        .overlay.visible { display: flex; }
+        .overlay .box { display: flex; flex-direction: column; gap: 14px; align-items: center; }
 
-        .track-details h3 {
-            font-size: 1.1rem;
-            font-weight: 600;
-        }
-
-        .track-details p {
-            font-size: 0.85rem;
-            color: var(--text-secondary);
-            margin-top: 2px;
-        }
-
-        .seek-bar-wrapper {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .seek-slider {
-            width: 100%;
-            height: 6px;
-            -webkit-appearance: none;
-            appearance: none;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 3px;
-            outline: none;
-        }
-
-        .seek-slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
-            background: var(--accent-cyan);
-            cursor: pointer;
-        }
-
-        .time-labels {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.75rem;
-            font-family: 'JetBrains Mono', monospace;
-            color: var(--text-muted);
-        }
-
-        .player-controls {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 14px;
-        }
-
-        .ctrl-btn {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid var(--border-subtle);
-            color: var(--text-primary);
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.15s ease;
-        }
-
-        .ctrl-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-            color: var(--accent-cyan);
-        }
-
-        .ctrl-btn.play-btn {
-            width: 52px;
-            height: 52px;
-            background: var(--accent-cyan);
-            color: #040914;
-            border: none;
-            box-shadow: 0 0 16px rgba(0, 210, 255, 0.4);
-        }
-
-        .ctrl-btn.play-btn:hover {
-            transform: scale(1.05);
-        }
-
-        /* Test Generator Controls */
-        .test-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 8px;
-        }
-
-        .test-btn {
-            padding: 10px;
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid var(--border-subtle);
-            border-radius: var(--radius-sm);
-            color: var(--text-secondary);
-            font-size: 0.8rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            text-align: center;
-        }
-
-        .test-btn.active {
-            background: rgba(0, 245, 160, 0.15);
-            border-color: var(--accent-emerald);
-            color: var(--accent-emerald);
-            font-weight: 600;
-        }
-
-        /* Client Telemetry Table */
-        .table-wrapper {
-            overflow-x: auto;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.85rem;
-        }
-
-        th {
-            text-align: left;
-            padding: 10px 12px;
-            color: var(--text-muted);
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            border-bottom: 1px solid var(--border-subtle);
-        }
-
-        td {
-            padding: 12px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-            font-family: 'JetBrains Mono', monospace;
-        }
-
-        .badge-lock {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            background: rgba(0, 245, 160, 0.15);
-            color: var(--accent-emerald);
-            border: 1px solid rgba(0, 245, 160, 0.3);
-        }
-
-        /* Sidebar Cards (QR Code, VLC Links) */
-        .qr-card {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 14px;
-            text-align: center;
-        }
-
-        .qr-img {
-            width: 190px;
-            height: 190px;
-            border-radius: var(--radius-md);
-            border: 1px solid var(--border-subtle);
-            background: #0D1117;
-            padding: 8px;
-        }
-
-        .btn-download {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            width: 100%;
-            padding: 10px 16px;
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid var(--border-subtle);
-            border-radius: var(--radius-sm);
-            color: var(--text-primary);
-            text-decoration: none;
-            font-size: 0.82rem;
-            font-weight: 500;
-            transition: all 0.2s ease;
-        }
-
-        .btn-download:hover {
-            background: rgba(255, 255, 255, 0.08);
-            border-color: var(--accent-cyan);
-            color: var(--accent-cyan);
-        }
+        canvas.chart { width: 100%; height: 120px; display: block; background: rgba(0,0,0,0.3); border-radius: 8px; border: 1px solid var(--panel-border); }
+        a.dl { color: var(--accent); font-size: 0.9rem; text-decoration: none; }
+        a.dl:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
-    <div class="dashboard-container">
-        <!-- Top Header -->
-        <header class="header-bar">
-            <div class="brand-group">
-                <div class="brand-icon">S</div>
-                <div class="brand-title">
-                    <h1>SonicSync Control Host</h1>
-                    <p>VLC-First Lossless Multi-Room Audio Platform</p>
+    <div class="shell">
+        <header class="topbar">
+            <div class="brand">
+                <div>
+                    <h1>SonicSync</h1>
+                    <div class="sub">Host Dashboard</div>
                 </div>
             </div>
-            <div class="header-metrics">
-                <div class="metric-pill">
-                    <span class="dot-green"></span>
-                    <span id="hdrStatus">Broadcasting 48 kHz / Float32</span>
-                </div>
-                <div class="metric-pill">
-                    <span>Anchor:</span>
-                    <strong style="color: var(--accent-cyan);" id="hdrTargetDelay">100.0 ms</strong>
-                </div>
-                <div class="metric-pill">
-                    <span>Clients:</span>
-                    <strong id="hdrClientCount" style="color: var(--accent-emerald);">0</strong>
-                </div>
-            </div>
+            <div class="health-pill" id="healthPill">connecting…</div>
         </header>
 
-        <!-- Main Content Area -->
-        <div class="main-grid">
-            <!-- Left Column: Audio Controls & Clients -->
-            <div style="display: flex; flex-direction: column; gap: 20px;">
-                <!-- Audio Source Tabs -->
-                <div class="panel">
-                    <div class="panel-header">
-                        <span class="panel-title">Audio Source Selection</span>
-                        <span id="activeSourceBadge" style="font-size: 0.8rem; color: var(--accent-cyan); font-family: 'JetBrains Mono';">Active: VLC Source</span>
-                    </div>
+        <nav class="tabs" id="tabNav">
+            <button class="tab-btn active" data-page="status">Status</button>
+            <button class="tab-btn" data-page="media">Media</button>
+            <button class="tab-btn" data-page="clients">Clients</button>
+            <button class="tab-btn" data-page="settings">Settings</button>
+            <button class="tab-btn" data-page="diagnostics">Diagnostics</button>
+        </nav>
 
-                    <div class="source-tabs">
-                        <button class="tab-btn active" data-source="vlc" id="tabVlc">
-                            <span>🎵 VLC Media Engine</span>
-                        </button>
-                        <button class="tab-btn" data-source="loopback" id="tabLoopback">
-                            <span>🖥️ System Loopback</span>
-                        </button>
-                        <button class="tab-btn" data-source="test" id="tabTest">
-                            <span>🔬 Test Generator</span>
-                        </button>
-                    </div>
-
-                    <!-- Real-time Oscilloscope -->
-                    <div class="vis-container">
-                        <canvas id="hostWaveformCanvas"></canvas>
-                    </div>
-
-                    <!-- VLC Player Card (shown when VLC source is active) -->
-                    <div class="vlc-player-card" id="vlcPanel">
-                        <div class="media-info">
-                            <div class="track-details">
-                                <h3 id="vlcTrackTitle">No Media Loaded</h3>
-                                <p id="vlcTrackMeta">SonicSync VLC Engine</p>
-                            </div>
-                            <span id="vlcStateBadge" class="badge-lock">IDLE</span>
-                        </div>
-
-                        <div class="seek-bar-wrapper">
-                            <input type="range" class="seek-slider" id="vlcSeekSlider" min="0" max="1000" value="0">
-                            <div class="time-labels">
-                                <span id="vlcTimeCurr">0:00</span>
-                                <span id="vlcTimeTotal">0:00</span>
-                            </div>
-                        </div>
-
-                        <div class="player-controls">
-                            <button class="ctrl-btn" id="btnPrev" title="Previous">⏮</button>
-                            <button class="ctrl-btn play-btn" id="btnPlayPause" title="Play/Pause">▶</button>
-                            <button class="ctrl-btn" id="btnStop" title="Stop">⏹</button>
-                            <button class="ctrl-btn" id="btnNext" title="Next">⏭</button>
-                        </div>
-                    </div>
-
-                    <!-- Test Tone Card (shown when Test Generator is active) -->
-                    <div id="testTonePanel" style="display: none;">
-                        <div class="test-grid">
-                            <button class="test-btn active" data-sig="sine_1khz">1 kHz Sine</button>
-                            <button class="test-btn" data-sig="pink_noise">Pink Noise</button>
-                            <button class="test-btn" data-sig="stereo_sweep">Stereo Sweep</button>
-                            <button class="test-btn" data-sig="metronome_click">Metronome 1Hz</button>
-                        </div>
+        <!-- STATUS -->
+        <section class="page active" id="page-status">
+            <div class="grid2">
+                <div class="card">
+                    <h2>Stream</h2>
+                    <div class="kv"><span class="k">Active Source</span><span class="v" id="stSource">—</span></div>
+                    <div class="kv"><span class="k">Format</span><span class="v" id="stFormat">—</span></div>
+                    <div class="kv"><span class="k">Target Delay</span><span class="v" id="stDelay">—</span></div>
+                    <div class="kv"><span class="k">Limiter</span><span class="v" id="stLimiter">—</span></div>
+                    <div class="kv"><span class="k">Connected Listeners</span><span class="v" id="stClients">—</span></div>
+                    <div class="btn-row" style="margin-top: 16px;">
+                        <button class="btn primary" id="btnBroadcast">Start Broadcasting Desktop Audio</button>
+                        <button class="btn danger" id="btnBroadcastStop" style="display:none;">Stop Broadcasting</button>
                     </div>
                 </div>
-
-                <!-- Live Client Synchronization Matrix -->
-                <div class="panel">
-                    <div class="panel-header">
-                        <span class="panel-title">Multi-Room Synchronization Matrix</span>
-                        <span id="matrixHealthBadge" class="badge-lock">OPTIMAL</span>
-                    </div>
-
-                    <div class="table-wrapper">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Client ID</th>
-                                    <th>Type</th>
-                                    <th>Buffer Depth</th>
-                                    <th>Clock Offset</th>
-                                    <th>Network RTT</th>
-                                    <th>Drift</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody id="clientsTableBody">
-                                <tr>
-                                    <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">
-                                        No client listeners currently connected. Scan the QR code to join.
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                <div class="card">
+                    <h2>Listen &amp; Join</h2>
+                    <div class="qr-panel">
+                        <img src="/api/qr" alt="QR code for the listener page" id="qrImg">
+                        <div class="qr-side">
+                            <div class="url-box" id="listenUrl">—</div>
+                            <div class="btn-row">
+                                <button class="btn small" id="btnCopyUrl">Copy Listen URL</button>
+                                <a class="dl" id="dlM3U" href="/api/stream.m3u">VLC .m3u ↓</a>
+                                <a class="dl" id="dlSDP" href="/api/sdp">.sdp ↓</a>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
-
-            <!-- Right Column: QR Code & Launchers -->
-            <div style="display: flex; flex-direction: column; gap: 20px;">
-                <!-- QR Code Card -->
-                <div class="panel qr-card">
-                    <span class="panel-title">Zero-Install Mobile Listen</span>
-                    <img id="qrImage" class="qr-img" alt="Listener QR Code" src="/api/qr">
-                    <p style="font-size: 0.8rem; color: var(--text-secondary);">
-                        Scan with iPhone or Android camera to start lossless 100.0 ms streaming.
-                    </p>
-                    <button id="btnCopyLink" class="btn-download" style="border-color: var(--accent-cyan); cursor: pointer;">
-                        <span>📋 Copy Mobile Listener Link</span>
-                    </button>
-                    <a href="/listen" target="_blank" class="btn-download">
-                        <span>🔗 Open Web Player on PC</span>
-                    </a>
+            <div class="card">
+                <h2>Host</h2>
+                <div class="grid3">
+                    <div class="kv"><span class="k">LAN IP</span><span class="v" id="stIp">—</span></div>
+                    <div class="kv"><span class="k">HTTP Port</span><span class="v" id="stPort">—</span></div>
+                    <div class="kv"><span class="k">Version</span><span class="v" id="stVersion">—</span></div>
                 </div>
+            </div>
+        </section>
 
-                <!-- VLC Launchers Card -->
-                <div class="panel">
-                    <div class="panel-header">
-                        <span class="panel-title">Media & Stream Control</span>
+        <!-- MEDIA (VLC) -->
+        <section class="page" id="page-media">
+            <div class="card">
+                <h2>VLC Transport</h2>
+                <div class="kv"><span class="k">State</span><span class="v" id="vlcState">—</span></div>
+                <div class="kv"><span class="k">Track</span><span class="v" id="vlcTrack">—</span></div>
+                <div class="kv"><span class="k">Position</span><span class="v" id="vlcPos">—</span></div>
+                <div style="display:flex; align-items:center; gap:12px; margin-top:14px;">
+                    <input type="range" id="seekBar" min="0" max="1000" value="0" style="flex:1;">
+                    <span style="font-family:var(--mono); font-size:0.8rem; color:var(--text-sub);" id="seekLabel">--:-- / --:--</span>
+                </div>
+                <div class="btn-row" style="margin-top:14px;">
+                    <button class="btn" id="vlcPrev">⏮ Prev</button>
+                    <button class="btn" id="vlcPlay">▶ Play</button>
+                    <button class="btn" id="vlcPause">⏸ Pause</button>
+                    <button class="btn" id="vlcStop">⏹ Stop</button>
+                    <button class="btn" id="vlcNext">⏭ Next</button>
+                    <button class="btn small" id="vlcUseSource">Use VLC as Source</button>
+                </div>
+                <div style="display:flex; align-items:center; gap:12px; margin-top:14px;">
+                    <span style="font-size:0.8rem; color:var(--text-muted);">VOL</span>
+                    <input type="range" id="vlcVolume" min="0" max="100" value="80" style="flex:1;">
+                    <span style="font-family:var(--mono); font-size:0.8rem;" id="vlcVolumeLabel">80%</span>
+                </div>
+            </div>
+
+            <div class="grid2">
+                <div class="card">
+                    <h2>Load Media</h2>
+                    <div style="display:flex; gap:8px; margin-bottom:10px;">
+                        <input type="text" id="vlcUrlInput" placeholder="File path, folder, or network URL" style="flex:1;">
+                        <button class="btn" id="vlcAddUrl">Add</button>
                     </div>
-                    <div style="display: flex; flex-direction: column; gap: 10px;">
-                        <label class="btn-download" style="cursor: pointer; background: rgba(0, 210, 255, 0.1); border-color: var(--accent-cyan);">
-                            <span>🎬 Open Any Video / Movie / Audio File</span>
-                            <input type="file" id="filePicker" accept="video/*,audio/*,.mp4,.mkv,.avi,.mov,.webm,.flv,.mp3,.flac,.wav" style="display: none;">
+                    <div class="btn-row">
+                        <label class="btn small" style="display:inline-flex; align-items:center;">Upload file
+                            <input type="file" id="vlcFileInput" accept=".mp3,.flac,.wav,.m4a,.ogg,.opus,.aiff,.m3u" style="display:none;">
                         </label>
+                        <button class="btn small" id="vlcBrowseHost">Browse on host…</button>
+                    </div>
+                    <div class="btn-row" style="margin-top:12px;">
+                        <button class="btn small" id="vlcRepeat">Repeat: off</button>
+                        <button class="btn small" id="vlcShuffle">Shuffle: off</button>
+                        <button class="btn small danger" id="vlcClear">Clear playlist</button>
+                    </div>
+                </div>
+                <div class="card">
+                    <h2>Playlist (<span id="vlcPlCount">0</span>)</h2>
+                    <div id="vlcPlaylist"><div class="empty-note">Playlist empty — add media above</div></div>
+                </div>
+            </div>
+        </section>
 
-                        <div style="display: flex; gap: 6px;">
-                            <input type="text" id="streamUrlInput" placeholder="Paste Video / Stream URL..." style="flex: 1; padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); background: rgba(0,0,0,0.3); color: var(--text-primary); font-size: 0.8rem;">
-                            <button id="btnPlayStreamUrl" class="btn-download" style="width: auto; padding: 8px 14px; background: var(--accent-cyan); color: #040914; font-weight: 600; border: none; cursor: pointer;">Play</button>
-                        </div>
+        <!-- CLIENTS -->
+        <section class="page" id="page-clients">
+            <div class="card">
+                <h2>Connected Listeners</h2>
+                <div id="clientsTableWrap">
+                    <div class="empty-note" id="clientsEmpty">No listeners connected</div>
+                    <table class="clients" id="clientsTable" style="display:none;">
+                        <thead>
+                            <tr><th>ID</th><th>Type</th><th>IP</th><th>Buffer</th><th>Offset</th><th>RTT</th><th>Drift</th><th>Loss</th><th>Underruns</th><th>Sync</th><th>Seen</th></tr>
+                        </thead>
+                        <tbody id="clientsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
 
-                        <div style="padding: 10px; border-radius: var(--radius-sm); background: rgba(0, 245, 160, 0.06); border: 1px solid rgba(0, 245, 160, 0.2); font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4;">
-                            <strong style="color: var(--accent-emerald);">💡 Pro-Tip for YouTube / Netflix:</strong><br>
-                            To stream audio from YouTube, Netflix, or games running in your browser, simply select <strong style="color: #FFF;">🖥️ System Loopback</strong>!
-                        </div>
-
-                        <a href="/api/stream.m3u" class="btn-download" download="sonicsync_stream.m3u">
-                            <span>📥 Download VLC M3U Stream</span>
-                        </a>
-                        <a href="/api/sdp" class="btn-download" download="sonicsync_stream.sdp">
-                            <span>📄 Download SDP Session File</span>
-                        </a>
+        <!-- SETTINGS -->
+        <section class="page" id="page-settings">
+            <div class="grid2">
+                <div class="card">
+                    <h2>Audio Source</h2>
+                    <div class="btn-row" style="flex-direction:column; align-items:stretch; gap:8px;">
+                        <button class="btn" data-src="test">🧪 Test Generator</button>
+                        <button class="btn" data-src="loopback">🖥️ Desktop Loopback (WASAPI)</button>
+                        <button class="btn" data-src="vlc">🎬 VLC Media Player</button>
+                    </div>
+                    <p style="color:var(--text-muted); font-size:0.8rem; margin-top:10px;" id="settingsSourceNote"></p>
+                </div>
+                <div class="card">
+                    <h2>Processing &amp; Test Tone</h2>
+                    <div class="kv">
+                        <span class="k">Safety Limiter</span>
+                        <span class="v"><button class="btn small" id="btnLimiter">—</button></span>
+                    </div>
+                    <div style="display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;">
+                        <select id="toneType">
+                            <option value="sine">Sine tone</option>
+                            <option value="pink">Pink noise</option>
+                            <option value="sweep">Stereo sweep</option>
+                            <option value="metronome">Metronome click</option>
+                            <option value="silence">Silence</option>
+                        </select>
+                        <input type="number" id="toneFreq" value="1000" min="20" max="20000" step="10" title="Frequency Hz">
+                        <input type="number" id="toneAmp" value="0.5" min="0.01" max="1" step="0.05" title="Amplitude">
+                        <button class="btn small" id="btnTone">Apply Tone</button>
                     </div>
                 </div>
             </div>
+        </section>
+
+        <!-- DIAGNOSTICS -->
+        <section class="page" id="page-diagnostics">
+            <div class="grid3">
+                <div class="card metric-big"><div class="num" id="dgLocked">—</div><div class="lbl">Locked Clients</div></div>
+                <div class="card metric-big"><div class="num" id="dgRtt">—</div><div class="lbl">Mean RTT</div></div>
+                <div class="card metric-big"><div class="num" id="dgDrift">—</div><div class="lbl">Max Drift</div></div>
+                <div class="card metric-big"><div class="num" id="dgBuffer">—</div><div class="lbl">Mean Buffer</div></div>
+                <div class="card metric-big"><div class="num" id="dgUnderruns">—</div><div class="lbl">Total Underruns</div></div>
+                <div class="card metric-big"><div class="num" id="dgHealth" style="color:var(--teal);">—</div><div class="lbl">Health</div></div>
+            </div>
+            <div class="card">
+                <h2>Client Buffer Depth (mean, last 120 s)</h2>
+                <canvas class="chart" id="bufferChart" width="900" height="120"></canvas>
+            </div>
+            <div class="card">
+                <h2>Control-Channel Round Trip</h2>
+                <div class="kv"><span class="k">WebSocket RTT</span><span class="v" id="dgWsRtt">—</span></div>
+                <div class="kv"><span class="k">WebSocket State</span><span class="v" id="dgWsState">—</span></div>
+            </div>
+        </section>
+    </div>
+
+    <div class="overlay" id="pinOverlay">
+        <div class="box">
+            <p style="color:var(--text-sub);">This host requires a PIN for control.</p>
+            <input type="password" id="pinInput" placeholder="PIN" style="width:200px; text-align:center; font-size:1.1rem;">
+            <p id="pinError" style="color:var(--red); font-size:0.85rem; display:none;">Invalid PIN</p>
+            <button class="btn primary" id="btnPinSubmit">Unlock</button>
         </div>
     </div>
 
-    <!-- UI Logic Script -->
+    <div class="toast" id="toast"></div>
+
     <script>
-        const tabVlc = document.getElementById('tabVlc');
-        const tabLoopback = document.getElementById('tabLoopback');
-        const tabTest = document.getElementById('tabTest');
-        const vlcPanel = document.getElementById('vlcPanel');
-        const testTonePanel = document.getElementById('testTonePanel');
-        const activeSourceBadge = document.getElementById('activeSourceBadge');
-        const hdrClientCount = document.getElementById('hdrClientCount');
-        const clientsTableBody = document.getElementById('clientsTableBody');
-        const btnPlayPause = document.getElementById('btnPlayPause');
-        const btnStop = document.getElementById('btnStop');
-        const btnNext = document.getElementById('btnNext');
-        const btnPrev = document.getElementById('btnPrev');
-        const vlcTrackTitle = document.getElementById('vlcTrackTitle');
-        const vlcStateBadge = document.getElementById('vlcStateBadge');
-        const hostCanvas = document.getElementById('hostWaveformCanvas');
-        const hostCtx = hostCanvas.getContext('2d');
+        'use strict';
 
-        const btnCopyLink = document.getElementById('btnCopyLink');
-        const filePicker = document.getElementById('filePicker');
-        let currentListenUrl = window.location.origin + '/listen';
+        const $ = (id) => document.getElementById(id);
 
-        // Copy mobile link to clipboard
-        btnCopyLink.addEventListener('click', async () => {
-            try {
-                await navigator.clipboard.writeText(currentListenUrl);
-                const originalHtml = btnCopyLink.innerHTML;
-                btnCopyLink.innerHTML = '<span>✅ Copied to Clipboard!</span>';
-                btnCopyLink.style.borderColor = 'var(--accent-emerald)';
-                btnCopyLink.style.color = 'var(--accent-emerald)';
-                setTimeout(() => {
-                    btnCopyLink.innerHTML = originalHtml;
-                    btnCopyLink.style.borderColor = 'var(--accent-cyan)';
-                    btnCopyLink.style.color = 'var(--text-primary)';
-                }, 2000);
-            } catch (e) {
-                prompt('Copy this link:', currentListenUrl);
-            }
-        });
+        let sessionToken = sessionStorage.getItem('sonicsync_token') || null;
+        let lastStatus = null;
+        let vlcPlaylistCache = [];
+        let bufferHistory = [];
+        let ws = null;
+        let wsRtt = null;
 
-        // Load local audio or video file into VLC
-        filePicker.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            // Send file name or path to VLC
-            await fetch('/api/vlc/playlist', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ command: 'add', uri: file.name, title: file.name })
-            });
-            await setSource('vlc');
-            pollStatus();
-        });
-
-        // Play stream URL
-        const streamUrlInput = document.getElementById('streamUrlInput');
-        const btnPlayStreamUrl = document.getElementById('btnPlayStreamUrl');
-        btnPlayStreamUrl.addEventListener('click', async () => {
-            const url = streamUrlInput.value.trim();
-            if (!url) return;
-            await fetch('/api/vlc/playlist', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ command: 'add', uri: url, title: url })
-            });
-            await setSource('vlc');
-            streamUrlInput.value = '';
-            pollStatus();
-        });
-
-        // Switch sources
-        async function setSource(src) {
-            await fetch('/api/control', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'set_source', source: src })
-            });
-            updateActiveTabs(src);
+        // ---------- utilities ----------
+        let toastTimer = null;
+        function toast(msg, isError) {
+            const t = $('toast');
+            t.textContent = msg;
+            t.className = 'toast show' + (isError ? ' error' : '');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => { t.className = 'toast'; }, 3200);
         }
 
-        function updateActiveTabs(src) {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            if (src === 'vlc') {
-                tabVlc.classList.add('active');
-                vlcPanel.style.display = 'flex';
-                testTonePanel.style.display = 'none';
-                activeSourceBadge.textContent = 'Active: VLC Source';
-            } else if (src === 'loopback') {
-                tabLoopback.classList.add('active');
-                vlcPanel.style.display = 'none';
-                testTonePanel.style.display = 'none';
-                activeSourceBadge.textContent = 'Active: System Loopback';
-            } else {
-                tabTest.classList.add('active');
-                vlcPanel.style.display = 'none';
-                testTonePanel.style.display = 'block';
-                activeSourceBadge.textContent = 'Active: Test Generator';
-            }
+        function authHeaders(extra) {
+            const h = Object.assign({ 'Content-Type': 'application/json' }, extra || {});
+            if (sessionToken) h['X-Session-Token'] = sessionToken;
+            return h;
         }
 
-        tabVlc.addEventListener('click', () => setSource('vlc'));
-        tabLoopback.addEventListener('click', () => setSource('loopback'));
-        tabTest.addEventListener('click', () => setSource('test'));
+        async function api(url, options) {
+            const opts = Object.assign({ headers: authHeaders() }, options || {});
+            const res = await fetch(url, opts);
+            if (res.status === 401) {
+                const ok = await promptForPin();
+                if (ok) return api(url, options);
+                throw new Error('Authorization required');
+            }
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            return data;
+        }
 
-        // Test tones
-        document.querySelectorAll('.test-btn').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                document.querySelectorAll('.test-btn').forEach(b => b.classList.remove('active'));
+        function fmtMs(ms) { return ms == null ? '—' : `${Number(ms).toFixed(1)} ms`; }
+        function fmtTime(ms) {
+            if (!ms || ms <= 0) return '--:--';
+            const s = Math.floor(ms / 1000);
+            return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+        }
+
+        // ---------- PIN auth ----------
+        function promptForPin() {
+            return new Promise((resolve) => {
+                const overlay = $('pinOverlay'), input = $('pinInput'), err = $('pinError');
+                overlay.classList.add('visible');
+                input.value = '';
+                input.focus();
+                const submit = async () => {
+                    try {
+                        const res = await fetch('/api/auth', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ pin: input.value })
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            sessionToken = data.token;
+                            sessionStorage.setItem('sonicsync_token', sessionToken);
+                            overlay.classList.remove('visible');
+                            btn.removeEventListener('click', submit);
+                            resolve(true);
+                            return;
+                        }
+                    } catch (e) { /* fallthrough */ }
+                    err.style.display = 'block';
+                    input.value = '';
+                };
+                const btn = $('btnPinSubmit');
+                btn.addEventListener('click', submit);
+                input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') submit(); });
+            });
+        }
+
+        // ---------- tabs ----------
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
                 btn.classList.add('active');
-                await fetch('/api/test-tone', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ signal_type: btn.dataset.sig })
-                });
+                $('page-' + btn.dataset.page).classList.add('active');
             });
         });
 
-        // VLC Controls
-        btnPlayPause.addEventListener('click', async () => {
-            await fetch('/api/control', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'toggle_pause' })
-            });
-        });
-
-        btnStop.addEventListener('click', async () => {
-            await fetch('/api/control', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'stop' })
-            });
-        });
-
-        btnNext.addEventListener('click', async () => {
-            await fetch('/api/control', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'next' })
-            });
-        });
-
-        btnPrev.addEventListener('click', async () => {
-            await fetch('/api/control', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'previous' })
-            });
-        });
-
-        // Periodic Status Polling (1 Hz)
+        // ---------- status polling ----------
         async function pollStatus() {
+            let s;
             try {
-                const res = await fetch('/api/status');
-                const data = await res.json();
-
-                if (data.listen_url) {
-                    currentListenUrl = data.listen_url;
-                }
-                hdrClientCount.textContent = data.connected_clients;
-                updateActiveTabs(data.active_source);
-
-                if (data.vlc) {
-                    vlcStateBadge.textContent = (data.vlc.state || 'IDLE').toUpperCase();
-                    vlcTrackTitle.textContent = data.vlc.current_track || 'SonicSync Master Stream';
-                    btnPlayPause.textContent = data.vlc.state === 'playing' ? '⏸' : '▶';
-                }
-
-                // Poll client list
-                const clientsRes = await fetch('/api/clients');
-                const clientsData = await clientsRes.json();
-                renderClients(clientsData.clients);
-
+                s = await api('/api/status');
             } catch (e) {
-                console.debug('Poll error:', e);
-            }
-        }
-
-        function renderClients(clients) {
-            if (!clients || clients.length === 0) {
-                clientsTableBody.innerHTML = `
-                    <tr>
-                        <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">
-                            No client listeners currently connected. Scan the QR code to join.
-                        </td>
-                    </tr>
-                `;
+                $('healthPill').textContent = 'host unreachable';
                 return;
             }
+            lastStatus = s;
 
-            clientsTableBody.innerHTML = clients.map(c => `
-                <tr>
-                    <td style="color: var(--text-primary);">${c.client_id}</td>
-                    <td style="color: var(--text-secondary);">${c.client_type}</td>
-                    <td style="color: var(--accent-cyan);">${c.buffer_depth_ms} ms</td>
-                    <td>${c.clock_offset_ms} ms</td>
-                    <td>${c.rtt_ms} ms</td>
-                    <td>${c.drift_ppm} ppm</td>
-                    <td><span class="badge-lock">${c.is_locked ? 'LOCKED' : 'SYNCING'}</span></td>
-                </tr>
-            `).join('');
-        }
+            $('healthPill').innerHTML = `<b>${s.connected_clients}</b> listening · ${s.active_source} · ${s.sample_rate / 1000} kHz`;
+            $('stSource').textContent = s.active_source;
+            $('stFormat').textContent = `${s.format} · ${s.sample_rate} Hz · ${s.channels} ch`;
+            $('stDelay').textContent = `${s.target_delay_ms.toFixed(1)} ms`;
+            $('stClients').textContent = s.connected_clients;
+            $('stIp').textContent = s.host_ip;
+            $('stPort').textContent = s.port;
+            $('stVersion').textContent = s.version;
+            $('listenUrl').textContent = s.listen_url;
+            $('settingsSourceNote').textContent = `Active: ${s.active_source}`;
 
-        setInterval(pollStatus, 1000);
-        pollStatus();
+            const limiterOn = s.limiter_enabled;
+            $('stLimiter').textContent = limiterOn ? `on (${s.limiter_reduction_db.toFixed(1)} dB)` : 'off';
 
-        // Waveform Animation
-        let phase = 0;
-        function renderWaveform() {
-            requestAnimationFrame(renderWaveform);
-            hostCanvas.width = hostCanvas.clientWidth;
-            hostCanvas.height = hostCanvas.clientHeight;
-            const w = hostCanvas.width;
-            const h = hostCanvas.height;
+            const broadcasting = s.active_source === 'loopback' || s.active_source === 'vlc';
+            $('btnBroadcast').style.display = broadcasting ? 'none' : 'inline-block';
+            $('btnBroadcastStop').style.display = broadcasting ? 'inline-block' : 'none';
 
-            hostCtx.fillStyle = '#04070D';
-            hostCtx.fillRect(0, 0, w, h);
-
-            hostCtx.lineWidth = 2;
-            hostCtx.strokeStyle = '#00D2FF';
-            hostCtx.beginPath();
-
-            phase += 0.05;
-            for (let x = 0; x < w; x++) {
-                const y = (0.5 + Math.sin((x * 0.03) + phase) * 0.3 * Math.cos(x * 0.01)) * h;
-                if (x === 0) hostCtx.moveTo(x, y);
-                else hostCtx.lineTo(x, y);
+            // VLC panel (status.vlc is populated when VLC is the active source)
+            const v = s.vlc || {};
+            if (v.state !== undefined) {
+                $('vlcState').textContent = v.state;
+                $('vlcTrack').textContent = v.current_track || 'None';
+                $('vlcPos').textContent = `${fmtTime(v.time_ms)} / ${fmtTime(v.length_ms)}`;
+                if (v.playlist) vlcPlaylistCache = v.playlist;
+                if (typeof v.volume === 'number') {
+                    $('vlcVolume').value = v.volume;
+                    $('vlcVolumeLabel').textContent = `${v.volume}%`;
+                }
+                $('vlcRepeat').textContent = `Repeat: ${v.repeat || 'off'}`;
+                $('vlcShuffle').textContent = `Shuffle: ${v.shuffle ? 'on' : 'off'}`;
+                renderPlaylist(v.current_index);
             }
-            hostCtx.stroke();
+            updateSeek(v);
         }
-        renderWaveform();
+
+        // ---------- broadcast controls ----------
+        $('btnBroadcast').addEventListener('click', async () => {
+            try {
+                const target = (lastStatus && (lastStatus.last_source === 'vlc' || $('page-media').classList.contains('active'))) ? 'vlc' : 'loopback';
+                await api('/api/control', { method: 'POST', body: JSON.stringify({ action: 'set_source', source: target }) });
+                toast(`Broadcasting from ${target}`);
+                pollStatus();
+            } catch (e) { toast(e.message, true); }
+        });
+
+        $('btnBroadcastStop').addEventListener('click', async () => {
+            try {
+                await api('/api/control', { method: 'POST', body: JSON.stringify({ action: 'stop' }) });
+                await api('/api/control', { method: 'POST', body: JSON.stringify({ action: 'set_source', source: 'test' }) });
+                toast('Broadcast stopped');
+                pollStatus();
+            } catch (e) { toast(e.message, true); }
+        });
+
+        $('btnCopyUrl').addEventListener('click', async () => {
+            try {
+                await navigator.clipboard.writeText($('listenUrl').textContent);
+                toast('Listen URL copied');
+            } catch (e) {
+                toast('Copy failed — select the URL manually', true);
+            }
+        });
+
+        // ---------- VLC transport ----------
+        function vlcControl(payload) {
+            return api('/api/control', { method: 'POST', body: JSON.stringify(payload) })
+                .catch(e => toast(e.message, true));
+        }
+
+        $('vlcPlay').addEventListener('click', () => vlcControl({ action: 'play' }));
+        $('vlcPause').addEventListener('click', () => vlcControl({ action: 'toggle_pause' }));
+        $('vlcStop').addEventListener('click', () => vlcControl({ action: 'stop' }));
+        $('vlcNext').addEventListener('click', () => vlcControl({ action: 'next' }));
+        $('vlcPrev').addEventListener('click', () => vlcControl({ action: 'previous' }));
+
+        $('vlcUseSource').addEventListener('click', () => vlcControl({ action: 'set_source', source: 'vlc' }).then(() => { toast('VLC is now the source'); pollStatus(); }));
+
+        let seeking = false;
+        function updateSeek(v) {
+            if (seeking) return;
+            const pos = v.position || 0;
+            $('seekBar').value = Math.round(pos * 1000);
+            $('seekLabel').textContent = `${fmtTime(v.time_ms)} / ${fmtTime(v.length_ms)}`;
+        }
+        $('seekBar').addEventListener('input', () => { seeking = true; });
+        $('seekBar').addEventListener('change', () => {
+            seeking = false;
+            vlcControl({ action: 'seek', position: $('seekBar').value / 1000 });
+        });
+
+        $('vlcVolume').addEventListener('input', (e) => {
+            $('vlcVolumeLabel').textContent = `${e.target.value}%`;
+        });
+        $('vlcVolume').addEventListener('change', (e) => {
+            vlcControl({ action: 'volume', volume: parseInt(e.target.value, 10) });
+        });
+
+        $('vlcAddUrl').addEventListener('click', async () => {
+            const uri = $('vlcUrlInput').value.trim();
+            if (!uri) { toast('Enter a path or URL first', true); return; }
+            try {
+                const data = await api('/api/vlc/playlist', { method: 'POST', body: JSON.stringify({ command: 'add', uri: uri }) });
+                $('vlcUrlInput').value = '';
+                if (data.playlist) vlcPlaylistCache = data.playlist;
+                renderPlaylist();
+                toast('Media added');
+            } catch (e) { toast(e.message, true); }
+        });
+
+        $('vlcFileInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const form = new FormData();
+            form.append('file', file);
+            if (sessionToken) form.append('token', sessionToken);
+            try {
+                const res = await fetch('/api/vlc/upload', { method: 'POST', headers: sessionToken ? { 'X-Session-Token': sessionToken } : {}, body: form });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+                toast(`Uploaded ${data.file}`);
+                pollStatus();
+            } catch (err) { toast(err.message, true); }
+            e.target.value = '';
+        });
+
+        $('vlcBrowseHost').addEventListener('click', async () => {
+            try {
+                const data = await api('/api/vlc/browse', { method: 'POST', body: JSON.stringify({}) });
+                toast(data.status === 'success' ? `Playing ${data.path}` : 'Browse cancelled');
+            } catch (e) { toast(e.message, true); }
+        });
+
+        $('vlcRepeat').addEventListener('click', async () => {
+            const modes = ['off', 'all', 'one'];
+            const cur = $('vlcRepeat').textContent.replace('Repeat: ', '');
+            const next = modes[(modes.indexOf(cur) + 1) % modes.length];
+            try {
+                await api('/api/vlc/playlist', { method: 'POST', body: JSON.stringify({ command: 'repeat', mode: next }) });
+                $('vlcRepeat').textContent = `Repeat: ${next}`;
+            } catch (e) { toast(e.message, true); }
+        });
+
+        $('vlcShuffle').addEventListener('click', async () => {
+            const on = !$('vlcShuffle').textContent.includes('on');
+            try {
+                await api('/api/vlc/playlist', { method: 'POST', body: JSON.stringify({ command: 'shuffle', enabled: on }) });
+                $('vlcShuffle').textContent = `Shuffle: ${on ? 'on' : 'off'}`;
+            } catch (e) { toast(e.message, true); }
+        });
+
+        $('vlcClear').addEventListener('click', async () => {
+            try {
+                await api('/api/vlc/playlist', { method: 'POST', body: JSON.stringify({ command: 'clear' }) });
+                vlcPlaylistCache = [];
+                renderPlaylist();
+            } catch (e) { toast(e.message, true); }
+        });
+
+        function renderPlaylist(currentIdx) {
+            const wrap = $('vlcPlaylist');
+            $('vlcPlCount').textContent = vlcPlaylistCache.length;
+            if (!vlcPlaylistCache.length) {
+                wrap.innerHTML = '<div class="empty-note">Playlist empty — add media above</div>';
+                return;
+            }
+            wrap.innerHTML = '';
+            vlcPlaylistCache.forEach((item, i) => {
+                const row = document.createElement('div');
+                row.className = 'playlist-item' + (i === currentIdx ? ' current' : '');
+                const title = document.createElement('span');
+                title.textContent = item.title || item.uri || `Item ${i + 1}`;
+                const play = document.createElement('button');
+                play.className = 'play-btn';
+                play.textContent = '▶';
+                play.title = 'Play this item';
+                play.addEventListener('click', async () => {
+                    try {
+                        await api('/api/vlc/playlist', { method: 'POST', body: JSON.stringify({ command: 'play_index', index: i }) });
+                    } catch (e) { toast(e.message, true); }
+                });
+                row.appendChild(title);
+                row.appendChild(play);
+                wrap.appendChild(row);
+            });
+        }
+
+        // ---------- clients ----------
+        async function pollClients() {
+            let data;
+            try {
+                data = await api('/api/clients');
+            } catch (e) { return; }
+            const clients = data.clients || [];
+            const empty = $('clientsEmpty');
+            const table = $('clientsTable');
+            const body = $('clientsBody');
+            if (!clients.length) {
+                empty.style.display = 'block';
+                table.style.display = 'none';
+                return;
+            }
+            empty.style.display = 'none';
+            table.style.display = 'table';
+            body.innerHTML = '';
+            clients.forEach(c => {
+                const tr = document.createElement('tr');
+                if ((c.last_seen_sec_ago || 0) > 5) tr.className = 'stale';
+                else if (!c.is_locked) tr.className = 'unlocked';
+
+                const cells = [
+                    c.client_id, c.client_type, c.ip_address,
+                    `${(c.buffer_depth_ms || 0).toFixed(0)} ms`,
+                    `${(c.clock_offset_ms || 0).toFixed(1)} ms`,
+                    `${(c.rtt_ms || 0).toFixed(1)} ms`,
+                    `${(c.drift_ppm || 0).toFixed(1)} ppm`,
+                    `${((c.packet_loss_rate || 0) * 100).toFixed(1)}%`,
+                    c.underruns || 0,
+                    c.is_locked ? 'LOCKED' : 'SYNCING',
+                    `${(c.last_seen_sec_ago || 0).toFixed(0)}s`
+                ];
+                cells.forEach(txt => {
+                    const td = document.createElement('td');
+                    td.textContent = txt;
+                    if (txt === 'LOCKED') td.style.color = 'var(--teal)';
+                    if (txt === 'SYNCING') td.style.color = 'var(--amber)';
+                    tr.appendChild(td);
+                });
+                body.appendChild(tr);
+            });
+        }
+
+        // ---------- settings ----------
+        document.querySelectorAll('[data-src]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                try {
+                    await api('/api/control', { method: 'POST', body: JSON.stringify({ action: 'set_source', source: btn.dataset.src }) });
+                    toast(`Source switched to ${btn.dataset.src}`);
+                    pollStatus();
+                } catch (e) { toast(e.message, true); }
+            });
+        });
+
+        $('btnLimiter').addEventListener('click', async () => {
+            const enable = !(lastStatus && lastStatus.limiter_enabled);
+            try {
+                await api('/api/control', { method: 'POST', body: JSON.stringify({ action: 'set_limiter', enabled: enable }) });
+                toast(`Limiter ${enable ? 'enabled' : 'disabled'}`);
+                pollStatus();
+            } catch (e) { toast(e.message, true); }
+        });
+
+        $('btnTone').addEventListener('click', async () => {
+            try {
+                await api('/api/test-tone', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        signal_type: $('toneType').value,
+                        frequency: parseFloat($('toneFreq').value),
+                        amplitude: parseFloat($('toneAmp').value)
+                    })
+                });
+                toast('Test tone updated (switch source to Test Generator to hear it)');
+            } catch (e) { toast(e.message, true); }
+        });
+
+        // ---------- diagnostics ----------
+        async function pollDiagnostics() {
+            let rep;
+            try {
+                rep = await api('/api/sync/report');
+            } catch (e) { return; }
+            $('dgLocked').textContent = `${rep.locked_clients}/${rep.active_clients}`;
+            $('dgRtt').textContent = fmtMs(rep.mean_rtt_ms);
+            $('dgDrift').textContent = `${(rep.max_drift_ppm || 0).toFixed(1)} ppm`;
+            $('dgBuffer').textContent = fmtMs(rep.mean_buffer_depth_ms);
+            $('dgUnderruns').textContent = rep.total_underruns;
+            const health = $('dgHealth');
+            health.textContent = rep.health_status;
+            health.style.color = rep.health_status === 'Optimal' ? 'var(--teal)' : (rep.health_status === 'Idle' ? 'var(--text-muted)' : 'var(--amber)');
+
+            bufferHistory.push(rep.mean_buffer_depth_ms || 0);
+            if (bufferHistory.length > 120) bufferHistory.shift();
+            drawBufferChart();
+        }
+
+        function drawBufferChart() {
+            const canvas = $('bufferChart');
+            const w = canvas.clientWidth || 900;
+            const h = canvas.clientHeight || 120;
+            if (canvas.width !== w) canvas.width = w;
+            if (canvas.height !== h) canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, w, h);
+
+            const maxVal = Math.max(150, ...bufferHistory);
+            ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+            ctx.beginPath();
+            [0.25, 0.5, 0.75].forEach(f => {
+                ctx.moveTo(0, h * f);
+                ctx.lineTo(w, h * f);
+            });
+            ctx.stroke();
+
+            if (bufferHistory.length < 2) return;
+            ctx.strokeStyle = '#00d2ff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            bufferHistory.forEach((v, i) => {
+                const x = (i / (bufferHistory.length - 1)) * (w - 8) + 4;
+                const y = h - 6 - (v / maxVal) * (h - 16);
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+        }
+
+        // ---------- control-channel WS (RTT + liveness) ----------
+        function connectWs() {
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            let url = `${protocol}//${location.host}/ws`;
+            const urlToken = new URLSearchParams(location.search).get('token');
+            if (sessionToken || urlToken) url += `?token=${encodeURIComponent(sessionToken || urlToken)}`;
+
+            ws = new WebSocket(url);
+            ws.binaryType = 'arraybuffer';
+            ws.onopen = () => { $('dgWsState').textContent = 'connected'; };
+            ws.onclose = () => {
+                $('dgWsState').textContent = 'disconnected';
+                setTimeout(connectWs, 3000);
+            };
+            ws.onmessage = (ev) => {
+                if (typeof ev.data !== 'string') return;
+                try {
+                    const msg = JSON.parse(ev.data);
+                    if (msg.type === 'ntp_response') {
+                        wsRtt = (performance.now() / 1000 - msg.t0) * 1000;
+                        $('dgWsRtt').textContent = `${wsRtt.toFixed(1)} ms`;
+                    }
+                } catch (e) { /* ignore */ }
+            };
+            setInterval(() => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'ntp_request', t0: performance.now() / 1000.0 }));
+                }
+            }, 2000);
+        }
+
+        // ---------- main loop ----------
+        async function tick() {
+            if (document.hidden) return;
+            await pollStatus();
+            pollClients();
+            pollDiagnostics();
+        }
+
+        connectWs();
+        tick();
+        setInterval(tick, 2000);
     </script>
 </body>
 </html>

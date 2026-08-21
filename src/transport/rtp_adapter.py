@@ -2,7 +2,6 @@
 
 import random
 import struct
-import socket
 from dataclasses import dataclass
 from typing import Optional
 import numpy as np
@@ -78,6 +77,11 @@ class RTPAdapter:
         self.ssrc = ssrc if ssrc is not None else random.randint(100000, 999999)
         self._seq = random.randint(0, 65535)
         self._rtp_timestamp = random.randint(0, 4294967295)
+
+    @property
+    def current_rtp_timestamp(self) -> int:
+        """Current RTP timestamp for RTCP sender reports."""
+        return self._rtp_timestamp
 
     def packetize(self, audio_data: np.ndarray, sample_format: Optional[SampleFormat] = None) -> RTPPacket:
         """Convert a block of audio frames to an RTPPacket.

@@ -64,12 +64,8 @@ class TestGeneratorSource(AudioSource):
                 out[:, c] = sine
 
         elif self.signal_type == TestSignalType.PINK_NOISE or self.signal_type == "pink":
-            # Voss-McCartney or filtered white noise approximation for 1/f slope
+            # FIR-approximated 1/f slope pink noise
             white = np.random.uniform(-1.0, 1.0, size=(num_frames, ch)).astype(np.float32)
-            # Simple 1st-order IIR pink filter
-            b = [0.049922035, -0.095993537, 0.050612699, -0.004408786]
-            a = [1.0, -2.494956002, 2.017265875, -0.522189400]
-            # Fast cumulative convolution or approximation
             for c in range(ch):
                 filtered = np.convolve(white[:, c], [0.3, 0.25, 0.2, 0.15, 0.1], mode='same')
                 out[:, c] = self.amplitude * (filtered / (np.max(np.abs(filtered)) + 1e-6))

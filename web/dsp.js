@@ -35,7 +35,8 @@ class AudioDSPChain {
         this.gainNode = this.ctx.createGain();
         this.gainNode.gain.value = 1.0;
 
-        // Connect chain: input -> lowShelf -> deEsser -> highShelf -> compressor -> gainNode -> destination
+        // Bypass shunt for Bit-Exact Flat: routes input straight to gain
+        this.bypassActive = false;
         this.inputNode = this.lowShelf;
         this.lowShelf.connect(this.deEsser);
         this.deEsser.connect(this.highShelf);
@@ -47,9 +48,30 @@ class AudioDSPChain {
         this.setPreset("cinema");
     }
 
+    _setBypass(active) {
+        if (this.bypassActive === active) return;
+        this.bypassActive = active;
+        const t = this.ctx.currentTime;
+        if (active) {
+            // Route around EQ + compressor entirely (true bit-exact path)
+            this.inputNode.disconnect();
+            this.inputNode.connect(this.gainNode);
+        } else {
+            this.inputNode.disconnect();
+            this.inputNode.connect(this.deEsser);
+        }
+    }
+
     setPreset(presetName) {
         const t = this.ctx.currentTime;
         const ramp = 0.05; // 50ms smooth parameter ramp
+
+        // Bit-Exact Flat must disable EQ and limiting entirely (ARCHITECTURE §15.2)
+        this._setBypass(presetName === "flat");
+        if (this.bypassActive) {
+            this.currentPreset = presetName;
+            return;
+        }
 
         switch (presetName) {
             case "cinema": // Cinema & Smooth Vocals (Default)
@@ -60,13 +82,6 @@ class AudioDSPChain {
                 this.highShelf.frequency.setValueAtTime(12000, t);
                 this.highShelf.gain.linearRampToValueAtTime(-1.5, t + ramp);
                 this.compressor.threshold.setValueAtTime(-1.0, t);
-                break;
-
-            case "flat": // Direct Bit-Exact Flat
-                this.lowShelf.gain.linearRampToValueAtTime(0.0, t + ramp);
-                this.deEsser.gain.linearRampToValueAtTime(0.0, t + ramp);
-                this.highShelf.gain.linearRampToValueAtTime(0.0, t + ramp);
-                this.compressor.threshold.setValueAtTime(-0.1, t);
                 break;
 
             case "tube": // Warm Tube Analog

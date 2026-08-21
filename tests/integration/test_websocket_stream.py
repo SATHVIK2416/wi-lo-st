@@ -55,10 +55,15 @@ async def test_websocket_ntp_and_telemetry():
         await asyncio.sleep(0.05)
         clients = sync_coord.get_clients()
         assert len(clients) == 1
-        assert clients[0]["client_id"] == "test_phone"
+        # Server-assigned client id is authoritative (prevents stale-telemetry leaks)
+        assert clients[0]["client_id"].startswith("client_")
+        assert clients[0]["client_type"] == "web"
         assert clients[0]["buffer_depth_ms"] == 102.5
 
+        # Disconnect must remove telemetry under the SAME id it registered
         await ws.close()
+        await asyncio.sleep(0.05)
+        assert len(sync_coord.get_clients()) == 0
 
     finally:
         await client.close()

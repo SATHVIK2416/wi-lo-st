@@ -6,7 +6,6 @@ Lossless, Ultra-Low-Latency Multi-Room Wireless Audio Broadcasting.
 import argparse
 import asyncio
 import logging
-import os
 import sys
 import webbrowser
 
@@ -32,6 +31,7 @@ def main():
     parser.add_argument("--channels", type=int, default=2, help="Audio channels (default: 2)")
     parser.add_argument("--target-delay", type=float, default=100.0, help="Target presentation delay in ms (default: 100.0)")
     parser.add_argument("--no-browser", action="store_true", help="Do not automatically open browser on launch")
+    parser.add_argument("--pin", default=None, help="Require this PIN for control APIs and listening (QR embeds a token)")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
 
     args = parser.parse_args()
@@ -56,13 +56,15 @@ def main():
             sample_rate=args.rate,
             channels=args.channels,
             target_delay_ms=args.target_delay,
-            default_source=args.source
+            default_source=args.source,
+            pin=args.pin
         )
 
         lan_ip = get_local_lan_ip()
         dash_url = f"http://localhost:{args.port}"
         lan_url = f"http://{lan_ip}:{args.port}"
-        listen_url = f"{lan_url}/listen"
+        token_suffix = f"?token={server.bootstrap_token}" if server.bootstrap_token else ""
+        listen_url = f"{lan_url}/listen{token_suffix}"
 
         print("\n" + "=" * 60)
         print("   SonicSync -- Lossless Multi-Room Audio Host")
@@ -100,6 +102,7 @@ def main():
             loop.close()
 
     elif args.mode == "receiver":
+        import time as _time
         receiver = NativeReceiverClient(
             target_delay_ms=args.target_delay,
             sample_rate=args.rate,
@@ -109,8 +112,13 @@ def main():
         print("\n[+] Native Receiver listening for UDP broadcast... Press Ctrl+C to stop.\n")
         try:
             while True:
-                asyncio.run(asyncio.sleep(1.0))
+                _time.sleep(1.0)
         except KeyboardInterrupt:
+            status = receiver.get_status()
+            logger.info(
+                "Receiver stats: received={packets_received} lost={packets_lost} "
+                "dupes={duplicates_dropped} offset={clock_offset_ms:.2f}ms locked={ntp_locked}".format(**status)
+            )
             receiver.stop()
 
     elif args.mode == "sidecar":

@@ -2,7 +2,6 @@
 
 import struct
 from dataclasses import dataclass
-from typing import Optional, Tuple
 from src.core.clock import MasterClock
 
 

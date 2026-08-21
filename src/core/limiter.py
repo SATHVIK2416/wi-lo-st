@@ -80,13 +80,13 @@ class SoftKneeLimiter:
 
         for i in range(num_frames):
             x = abs_peaks[i]
-            # Desired target gain based on soft knee
+            # Desired target gain: bounded so output approaches the threshold
             if x <= thresh:
                 target_gain = 1.0
             else:
-                # Soft knee compression
-                overshoot = x - thresh
-                target_gain = thresh / (thresh + np.tanh(overshoot / thresh) * thresh)
+                # Smooth knee: equals 1.0 at peak == threshold, approaches
+                # threshold / peak for large peaks, bounding output near threshold
+                target_gain = thresh / (thresh + (x - thresh))
 
             # Attack (gain reduction) is fast; release (gain recovery) is slow
             if target_gain < env:

@@ -1,7 +1,6 @@
 """VLC media playback controller."""
 
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +25,7 @@ class VLCController:
         self._is_muted: bool = False
         self._mock_state: str = VLCPlaybackState.STOPPED
         self._mock_position: float = 0.0
+        self._mock_time_ms: int = 0
 
     def attach_player(self, media_player):
         self._player = media_player
@@ -34,7 +34,9 @@ class VLCController:
         if self._player is not None:
             try:
                 res = self._player.play()
-                return res == 0
+                # libvlc returns 0 on success / -1 on error; some python-vlc
+                # versions return None when playback was merely initiated.
+                return True if res is None else int(res) >= 0
             except Exception as e:
                 logger.error(f"Error playing VLC player: {e}")
                 return False
@@ -62,6 +64,7 @@ class VLCController:
                 return False
         self._mock_state = VLCPlaybackState.STOPPED
         self._mock_position = 0.0
+        self._mock_time_ms = 0
         return True
 
     def toggle_pause(self) -> bool:
@@ -93,6 +96,7 @@ class VLCController:
             except Exception as e:
                 logger.error(f"Error seeking time: {e}")
                 return False
+        self._mock_time_ms = max(0, int(time_ms))
         return True
 
     def set_volume(self, volume: int) -> bool:
@@ -112,8 +116,8 @@ class VLCController:
                 v = self._player.audio_get_volume()
                 if v >= 0:
                     self._volume = v
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Could not read VLC volume: {e}")
         return self._volume
 
     def set_mute(self, mute: bool) -> bool:
@@ -122,8 +126,8 @@ class VLCController:
             try:
                 self._player.audio_set_mute(self._is_muted)
                 return True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Could not set VLC mute state: {e}")
         return True
 
     def get_state(self) -> str:
@@ -143,8 +147,8 @@ class VLCController:
                     vlc.State.Error: VLCPlaybackState.ERROR,
                 }
                 return mapping.get(state, VLCPlaybackState.STOPPED)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Could not read VLC playback state: {e}")
         return self._mock_state
 
     def get_position(self) -> float:
@@ -154,8 +158,8 @@ class VLCController:
                 pos = self._player.get_position()
                 if pos >= 0:
                     return float(pos)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Could not read VLC position: {e}")
         return self._mock_position
 
     def get_time_ms(self) -> int:
@@ -165,9 +169,9 @@ class VLCController:
                 t = self._player.get_time()
                 if t >= 0:
                     return int(t)
-            except Exception:
-                pass
-        return 0
+            except Exception as e:
+                logger.warning(f"Could not read VLC playback time: {e}")
+        return self._mock_time_ms
 
     def get_length_ms(self) -> int:
         """Get media total length in milliseconds."""
@@ -176,6 +180,6 @@ class VLCController:
                 l = self._player.get_length()
                 if l >= 0:
                     return int(l)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Could not read VLC media length: {e}")
         return 0

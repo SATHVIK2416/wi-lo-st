@@ -1,5 +1,6 @@
 """Proportional-Integral (PI) Phase-Locked Loop (PLL) watermark controller."""
 
+import time
 import numpy as np
 
 
@@ -23,7 +24,8 @@ class PLLController:
         self._integral_error = 0.0
         self._current_ratio = 1.0
         self._last_error = 0.0
-        self._last_update_time = 0.0
+        self._last_update_time: float = 0.0
+        self._has_prior_update = False
 
     @property
     def current_ratio(self) -> float:
@@ -40,11 +42,20 @@ class PLLController:
 
         Args:
             current_buffer_delay_sec: Measured playout buffer depth / delay in seconds
-            dt: Elapsed time since last update in seconds
+            dt: Elapsed time since last update in seconds. Pass None to let the
+                controller measure real elapsed time itself (recommended).
 
         Returns:
             float: Recommended resampling ratio r around 1.0
         """
+        now = time.perf_counter()
+        if dt is None:
+            if self._has_prior_update:
+                dt = now - self._last_update_time
+            else:
+                dt = 0.01
+        self._last_update_time = now
+        self._has_prior_update = True
         dt = max(0.001, min(1.0, float(dt)))
         # Error: positive if buffer has more delay than target (need to speed up, r > 1.0)
         error = current_buffer_delay_sec - self.target_delay_sec
@@ -74,3 +85,4 @@ class PLLController:
         self._integral_error = 0.0
         self._current_ratio = 1.0
         self._last_error = 0.0
+        self._has_prior_update = False
